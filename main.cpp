@@ -1,6 +1,7 @@
 #include <GL/glut.h>
 #include <vector>
 #include <cmath>
+#include <math.h>
 #include <cstring>
 #include <iostream>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include <sys/time.h>
 #endif
 
+#define M_PI 3.14159265358979323846
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -47,10 +49,13 @@ bool juego_iniciado = false; // Nuevo estado para la pantalla de inicio
 
 float rebote_enemigo = 0.1f;
 float direccion_rebote = 1.0f;
-float posicion_enemigo[3][2] = {
+const int NUM_ENEMIGOS = 5;
+float posicion_enemigo[NUM_ENEMIGOS][2] = {
     {-5.0f, 5.0f},
     {5.0f, -5.0f},
     {0.0f, 7.0f},
+    {-10.0f, -10.0f}, // Posición del enemigo 4
+    {15.0f, 2.0f}      // Posición del enemigo 5
 };
 
 int ancho_pantalla = 1200;
@@ -61,6 +66,9 @@ struct Bala {
     float direccion[3];
 };
 
+// Declara una variable para la textura 
+GLuint texturaID_pared; 
+GLuint texturaID_techo; 
 GLuint texturaID_suelo;
 GLuint texturaID_cara_doomguy;
 GLuint texturaID_pistola;
@@ -68,8 +76,9 @@ std::vector<GLuint> pistola_animacion_texturas;
 int pistola_animacion_cuadro_actual = 0;
 bool esta_animando_disparo = false;
 int tiempo_inicio_animacion = 0;
-int duracion_entre_cuadros = 50; // Milisegundos por cuadro
+int duracion_entre_cuadros = 80; // Milisegundos por cuadro
 std::vector<Bala> balas;
+
 
 void cargarAnimacionPistola(const char* archivo_gif) {
     // --- Lógica simulada para cargar la animación ---
@@ -119,7 +128,7 @@ struct CajaColision {
 // Función para obtener la caja de colisión de un enemigo (ajusta según tu representación)
 CajaColision obtenerCajaColisionEnemigo(int indice_enemigo) {
     CajaColision caja;
-    float tamano = 1.0f; // Asumiendo que tus cubos enemigos tienen lado 2.0, el "radio" es 1.0
+    float tamano = 10.0f; // Asumiendo que tus cubos enemigos tienen lado 2.0, el "radio" es 1.0
     caja.minX = posicion_enemigo[indice_enemigo][0] - tamano;
     caja.maxX = posicion_enemigo[indice_enemigo][0] + tamano;
     caja.minY = 0.0f;     // Ajusta si tus enemigos no están a nivel del suelo
@@ -163,7 +172,6 @@ bool rayoIntersectaCaja(float origenX, float origenY, float origenZ,
     t = tMin; // Distancia al punto de intersección
     return true;
 }
-
 
 // ==== UTILITARIAS ====
 void dibujarHUD() {
@@ -308,6 +316,15 @@ void dibujarLineaPared(float fijo, bool horizontal) {
     }
 }
 
+// Función auxiliar para dibujar un cubo
+void dibujarCubo(float x, float y, float z, float ancho, float alto, float profundidad) {
+    glPushMatrix();
+    glTranslatef(x, y, z);
+    glScalef(ancho, alto, profundidad);
+    glutSolidCube(1.0f);
+    glPopMatrix();
+}
+
 void dibujarTexto(float x, float y, const char* texto) {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
@@ -328,7 +345,7 @@ void dibujarTexto(float x, float y, const char* texto) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void dibujarMinimapa() {
+void dibujarMinimapa(float grosor_pared, float altura_pared) {
     // Cambiar a modo 2D
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
@@ -346,8 +363,15 @@ void dibujarMinimapa() {
     float posicion_mapa_x = ancho_pantalla - tamano_mapa - margen_derecho;
     float posicion_mapa_y = alto_pantalla - tamano_mapa - margen_superior;
 
-    // Dibujar el fondo del minimapa
+    // Dibujar el fondo del minimapa con un borde
     glColor3f(0.1f, 0.1f, 0.1f);
+    glBegin(GL_QUADS);
+        glVertex2f(posicion_mapa_x - 2.0f, posicion_mapa_y - 2.0f);
+        glVertex2f(posicion_mapa_x + tamano_mapa + 2.0f, posicion_mapa_y - 2.0f);
+        glVertex2f(posicion_mapa_x + tamano_mapa + 2.0f, posicion_mapa_y + tamano_mapa + 2.0f);
+        glVertex2f(posicion_mapa_x - 2.0f, posicion_mapa_y + tamano_mapa + 2.0f);
+    glEnd();
+    glColor3f(0.2f, 0.2f, 0.2f);
     glBegin(GL_QUADS);
         glVertex2f(posicion_mapa_x, posicion_mapa_y);
         glVertex2f(posicion_mapa_x + tamano_mapa, posicion_mapa_y);
@@ -357,12 +381,68 @@ void dibujarMinimapa() {
 
     // Escalar las coordenadas del mundo al espacio del minimapa
     float escala_mapa = tamano_mapa / 100.0f; // Asumiendo que tu mundo tiene ~100x100 unidades
+    float offset_mapa_x = posicion_mapa_x + tamano_mapa / 2.0f;
+    float offset_mapa_y = posicion_mapa_y + tamano_mapa / 2.0f;
+    float offset_mundo = 0.0f; // Si tu laberinto no está centrado en (0,0), ajusta esto
+
+    // Dibujar las paredes del laberinto en el minimapa como líneas blancas
+    glColor3f(1.0f, 1.0f, 1.0f);
+    float grosor_pared_mapa = grosor_pared * escala_mapa;
+    float altura_pared_mapa = altura_pared * escala_mapa; // Aunque la altura no es tan relevante en 2D
+
+    for (float i = -50.0f; i <= 50.0f; i += grosor_pared) {
+        // Pared Norte
+        glBegin(GL_LINES);
+            glVertex2f(offset_mapa_x + (i + offset_mundo) * escala_mapa, offset_mapa_y + (-50.0f + offset_mundo) * escala_mapa);
+            glVertex2f(offset_mapa_x + (i + grosor_pared + offset_mundo) * escala_mapa, offset_mapa_y + (-50.0f + offset_mundo) * escala_mapa);
+        glEnd();
+        // Pared Sur
+        glBegin(GL_LINES);
+            glVertex2f(offset_mapa_x + (i + offset_mundo) * escala_mapa, offset_mapa_y + (50.0f + offset_mundo) * escala_mapa);
+            glVertex2f(offset_mapa_x + (i + grosor_pared + offset_mundo) * escala_mapa, offset_mapa_y + (50.0f + offset_mundo) * escala_mapa);
+        glEnd();
+        // Pared Oeste
+        glBegin(GL_LINES);
+            glVertex2f(offset_mapa_x + (-50.0f + offset_mundo) * escala_mapa, offset_mapa_y + (i + offset_mundo) * escala_mapa);
+            glVertex2f(offset_mapa_x + (-50.0f + offset_mundo) * escala_mapa, offset_mapa_y + (i + grosor_pared + offset_mundo) * escala_mapa);
+        glEnd();
+        // Pared Este
+        glBegin(GL_LINES);
+            glVertex2f(offset_mapa_x + (50.0f + offset_mundo) * escala_mapa, offset_mapa_y + (i + offset_mundo) * escala_mapa);
+            glVertex2f(offset_mapa_x + (50.0f + offset_mundo) * escala_mapa, offset_mapa_y + (i + grosor_pared + offset_mundo) * escala_mapa);
+        glEnd();
+    }
+
+    // Dibujar las paredes interiores (basadas en tu último diseño)
+    glColor3f(1.0f, 1.0f, 1.0f);
+    auto dibujar_pared_mapa = [&](float x1, float z1, float x2, float z2) {
+        glBegin(GL_LINES);
+            glVertex2f(offset_mapa_x + (x1 + offset_mundo) * escala_mapa, offset_mapa_y + (z1 + offset_mundo) * escala_mapa);
+            glVertex2f(offset_mapa_x + (x2 + offset_mundo) * escala_mapa, offset_mapa_y + (z2 + offset_mundo) * escala_mapa);
+        glEnd();
+    };
+
+    // Pared vertical izquierda
+    for (float z = -40.0f; z <= 40.0f; z += 10.0f) {
+        dibujar_pared_mapa(-40.0f, z, -40.0f, z + grosor_pared);
+    }
+    // Paredes horizontales desde la izquierda
+    dibujar_pared_mapa(-40.0f, 30.0f, -40.0f + grosor_pared * 5, 30.0f);
+    dibujar_pared_mapa(-40.0f, 10.0f, -40.0f + grosor_pared * 3, 10.0f);
+    dibujar_pared_mapa(-40.0f, -10.0f, -40.0f + grosor_pared * 4, -10.0f);
+    dibujar_pared_mapa(-40.0f, -30.0f, -40.0f + grosor_pared * 2, -30.0f);
+    // Pared vertical de conexión
+    for (float y = -20.0f; y <= 20.0f; y += 10.0f) {
+        dibujar_pared_mapa(-20.0f, y, -20.0f, y + grosor_pared);
+    }
+    // Pared horizontal inferior derecha
+    dibujar_pared_mapa(-10.0f, -40.0f, -10.0f + grosor_pared * 6, -40.0f);
 
     // Dibujar al jugador como un punto amarillo
     glColor3f(1.0f, 1.0f, 0.0f);
-    float jugador_mapa_x = posicion_mapa_x + (posicion_camara_x + 50.0f) * escala_mapa;
-    float jugador_mapa_y = posicion_mapa_y + (posicion_camara_z + 50.0f) * escala_mapa;
-    float tamano_jugador = 5.0f;
+    float jugador_mapa_x = offset_mapa_x + posicion_camara_x * escala_mapa;
+    float jugador_mapa_y = offset_mapa_y + posicion_camara_z * escala_mapa;
+    float tamano_jugador = 6.0f;
     glBegin(GL_QUADS);
         glVertex2f(jugador_mapa_x - tamano_jugador / 2, jugador_mapa_y - tamano_jugador / 2);
         glVertex2f(jugador_mapa_x + tamano_jugador / 2, jugador_mapa_y - tamano_jugador / 2);
@@ -370,19 +450,19 @@ void dibujarMinimapa() {
         glVertex2f(jugador_mapa_x - tamano_jugador / 2, jugador_mapa_y + tamano_jugador / 2);
     glEnd();
 
-    // Dibujar a los enemigos como puntos rojos
-    glColor3f(1.0f, 0.0f, 0.0f);
-    float tamano_enemigo = 5.0f;
-    for (int i = 0; i < 3; ++i) {
-        float enemigo_mapa_x = posicion_mapa_x + (posicion_enemigo[i][0] + 50.0f) * escala_mapa;
-        float enemigo_mapa_y = posicion_mapa_y + (posicion_enemigo[i][1] + 50.0f) * escala_mapa;
-        glBegin(GL_QUADS);
-            glVertex2f(enemigo_mapa_x - tamano_enemigo / 2, enemigo_mapa_y - tamano_enemigo / 2);
-            glVertex2f(enemigo_mapa_x + tamano_enemigo / 2, enemigo_mapa_y - tamano_enemigo / 2);
-            glVertex2f(enemigo_mapa_x + tamano_enemigo / 2, enemigo_mapa_y + tamano_enemigo / 2);
-            glVertex2f(enemigo_mapa_x - tamano_enemigo / 2, enemigo_mapa_y + tamano_enemigo / 2);
-        glEnd();
-    }
+	// Dibujar a los enemigos como puntos rojos
+	glColor3f(1.0f, 0.0f, 0.0f);
+	float tamano_enemigo = 6.0f;
+	for (int i = 0; i < NUM_ENEMIGOS; ++i) {
+	    float enemigo_mapa_x = offset_mapa_x + posicion_enemigo[i][0] * escala_mapa;
+	    float enemigo_mapa_y = offset_mapa_y + posicion_enemigo[i][1] * escala_mapa;
+	    glBegin(GL_QUADS);
+	        glVertex2f(enemigo_mapa_x - tamano_enemigo / 2, enemigo_mapa_y - tamano_enemigo / 2);
+	        glVertex2f(enemigo_mapa_x + tamano_enemigo / 2, enemigo_mapa_y - tamano_enemigo / 2);
+	        glVertex2f(enemigo_mapa_x + tamano_enemigo / 2, enemigo_mapa_y + tamano_enemigo / 2);
+	        glVertex2f(enemigo_mapa_x - tamano_enemigo / 2, enemigo_mapa_y + tamano_enemigo / 2);
+	    glEnd();
+	}
 
     // Restaurar matrices
     glPopMatrix();
@@ -396,6 +476,7 @@ void dibujarEscena() {
     glLoadIdentity();
 
     if (!juego_iniciado) {
+        // --- PANTALLA DE INICIO ---
         // Deshabilitar la prueba de profundidad para dibujar en 2D
         glDisable(GL_DEPTH_TEST);
 
@@ -411,151 +492,228 @@ void dibujarEscena() {
 
         // Dibujar el fondo con degradado vertical
         glBegin(GL_QUADS);
-            glColor3f(0.2f, 0.1f, 0.0f); glVertex2f(0, 0);      // Marrón oscuro
-            glColor3f(0.4f, 0.2f, 0.0f); glVertex2f(ancho_pantalla, 0); // Marrón más claro
-            glColor3f(0.2f, 0.1f, 0.0f); glVertex2f(ancho_pantalla, alto_pantalla); // Marrón oscuro
-            glColor3f(0.4f, 0.2f, 0.0f); glVertex2f(0, alto_pantalla);  // Marrón más claro
+            glColor3f(0.2f, 0.1f, 0.0f); glVertex2f(0, 0);
+            glColor3f(0.4f, 0.2f, 0.0f); glVertex2f(ancho_pantalla, 0);
+            glColor3f(0.2f, 0.1f, 0.0f); glVertex2f(ancho_pantalla, alto_pantalla);
+            glColor3f(0.4f, 0.2f, 0.0f); glVertex2f(0, alto_pantalla);
         glEnd();
 
-        // Dibujar el título "AVENTURA ÉPICA" (ejemplo)
+        // Dibujar el título "DOOM - GRUPO 11 - T1"
         glColor3f(1.0f, 0.8f, 0.0f); // Amarillo dorado
-        const char* texto_titulo = "DOOM - GRUPO 11 - T1"; // Cambia el título aquí
+        const char* texto_titulo = "DOOM - GRUPO 11 - T1";
         int ancho_texto_titulo = 0;
         for (const char* c = texto_titulo; *c; ++c) {
-            ancho_texto_titulo += glutBitmapWidth(GLUT_BITMAP_9_BY_15, *c); // Fuente retro
+            ancho_texto_titulo += glutBitmapWidth(GLUT_BITMAP_9_BY_15, *c);
         }
         float posicion_texto_x = ancho_pantalla / 2 - ancho_texto_titulo / 2;
-        float posicion_texto_y = alto_pantalla / 2 + 30; // Un poco más arriba
+        float posicion_texto_y = alto_pantalla / 2 + 30;
         glRasterPos2f(posicion_texto_x, posicion_texto_y);
         for (const char* c = texto_titulo; *c; ++c) {
             glutBitmapCharacter(GLUT_BITMAP_9_BY_15, *c);
         }
 
-        // Dibujar la instrucción "PULSA ESPACIO PARA JUGAR" (ejemplo)
+        // Dibujar la instrucción "PULSA ESPACIO PARA JUGAR"
         glColor3f(0.8f, 0.6f, 0.0f); // Amarillo más apagado
-        const char* texto_instruccion = "PULSA ESPACIO PARA JUGAR"; // Cambia la instrucción
+        const char* texto_instruccion = "PULSA ESPACIO PARA JUGAR";
         int ancho_texto_instruccion = 0;
         for (const char* c = texto_instruccion; *c; ++c) {
-            ancho_texto_instruccion += glutBitmapWidth(GLUT_BITMAP_8_BY_13, *c); // Fuente más pequeña
+            ancho_texto_instruccion += glutBitmapWidth(GLUT_BITMAP_8_BY_13, *c);
         }
         float posicion_instruccion_x = ancho_pantalla / 2 - ancho_texto_instruccion / 2;
-        float posicion_instruccion_y = alto_pantalla / 2 - 30; // Un poco más abajo
+        float posicion_instruccion_y = alto_pantalla / 2 - 30;
         glRasterPos2f(posicion_instruccion_x, posicion_instruccion_y);
         for (const char* c = texto_instruccion; *c; ++c) {
             glutBitmapCharacter(GLUT_BITMAP_8_BY_13, *c);
         }
 
-        // Restaurar matrices
+        // Restaurar matrices de la pantalla de inicio
         glPopMatrix();
         glMatrixMode(GL_PROJECTION);
         glPopMatrix();
         glMatrixMode(GL_MODELVIEW);
-
 
     } else {
+        // --- ESCENA DEL JUEGO: LABERINTO DOOM ---
         glEnable(GL_DEPTH_TEST); // Volver a habilitar la prueba de profundidad para la escena 3D
-        // Dibujar la escena del juego normal en perspectiva 3D
         glMatrixMode(GL_PROJECTION);
         glPushMatrix();
         glLoadIdentity();
-		gluPerspective(45.0, (double)ancho_pantalla / (double)alto_pantalla, 1.0, 200.0);
+        gluPerspective(45.0, (double)ancho_pantalla / (double)alto_pantalla, 1.0, 200.0);
 
         glMatrixMode(GL_MODELVIEW);
         glPushMatrix();
         glLoadIdentity();
 
-        gluLookAt(
-            posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
-            posicion_camara_x + direccion_camara_x, posicion_camara_y + altura_salto + direccion_camara_y, posicion_camara_z + direccion_camara_z,
-            0.0f, 1.0f, 0.0f
-        );
+        // --- POSICIÓN DE LA CÁMARA ---
+        gluLookAt(posicion_camara_x, posicion_camara_y + altura_salto + 2.0f, posicion_camara_z, 
+                  posicion_camara_x + direccion_camara_x, posicion_camara_y + altura_salto + 1.0f + direccion_camara_y, posicion_camara_z + direccion_camara_z,
+                  0.0f, 1.0f, 0.0f);
 
-        // Suelo con la textura completa
+        // --- DIBUJAR EL SUELO ---
         glColor3f(1.0f, 1.0f, 1.0f); // Establecer color blanco para la textura
-	    glEnable(GL_TEXTURE_2D);
-	    glBindTexture(GL_TEXTURE_2D, texturaID_suelo);
-	
-	    float repetirX = 10.0f; // Repetir 10 veces a lo largo del eje X
-	    float repetirZ = 10.0f; // Repetir 10 veces a lo largo del eje Z
-	
-	    glBegin(GL_QUADS);
-	        glTexCoord2f(0.0f, 0.0f); glVertex3f(-50.0f, 0.0f, -50.0f);
-	        glTexCoord2f(0.0f, repetirZ); glVertex3f(-50.0f, 0.0f, 50.0f);
-	        glTexCoord2f(repetirX, repetirZ); glVertex3f(50.0f, 0.0f, 50.0f);
-	        glTexCoord2f(repetirX, 0.0f); glVertex3f(50.0f, 0.0f, -50.0f);
-	    glEnd();
-	
-	    glDisable(GL_TEXTURE_2D);
-
-
-
-        // Techo
-        glColor3f(0.5f, 0.5f, 0.5f);
-        glBegin(GL_QUADS);
-            glVertex3f(-50.0f, 5.0f, -50.0f);
-            glVertex3f(50.0f, 5.0f, -50.0f);
-            glVertex3f(50.0f, 5.0f, 50.0f);
-            glVertex3f(-50.0f, 5.0f, 50.0f);
-        glEnd();
-
-        // Paredes
-        glColor3f(0.5f, 0.5f, 0.5f);
-        dibujarLineaPared(-50.0f, true);
-        dibujarLineaPared(50.0f, true);
-        dibujarLineaPared(-50.0f, false);
-        dibujarLineaPared(50.0f, false);
-
-        glColor3f(1.0f, 0.0f, 0.0f);
-        for (int i = 0; i < 3; ++i) {
-            glPushMatrix();
-            glTranslatef(posicion_enemigo[i][0], 1.0f + rebote_enemigo, posicion_enemigo[i][1]);
-            glutSolidCube(2.0f);
-            glPopMatrix();
-        }
-
-        if (juego_terminado) {
-            dibujarTexto(ancho_pantalla / 2 - 100, alto_pantalla / 2, "Juego Terminado"); // Centré el texto
-        }
-
-
-		 // Dibujar el arma cerca de la cámara
-    	glPushMatrix();
-        glTranslatef(posicion_camara_x + direccion_camara_x * 0.5f, posicion_camara_y + altura_salto - 0.3f + direccion_camara_y * 0.5f, posicion_camara_z + direccion_camara_z * 0.5f);
-        glRotatef(angulo_pitch, 1.0f, 0.0f, 0.0f);
-        glRotatef(angulo_yaw + 90.0f, 0.0f, 1.0f, 0.0f);
-
         glEnable(GL_TEXTURE_2D);
-        if (esta_animando_disparo && !pistola_animacion_texturas.empty()) {
-            glBindTexture(GL_TEXTURE_2D, pistola_animacion_texturas[pistola_animacion_cuadro_actual % pistola_animacion_texturas.size()]);
-        } else {
-            glBindTexture(GL_TEXTURE_2D, texturaID_pistola);
-        }
-        glColor3f(1.0f, 1.0f, 1.0f);
+        glBindTexture(GL_TEXTURE_2D, texturaID_suelo);
+
+        float repetirX = 10.0f; // Repetir 10 veces a lo largo del eje X
+        float repetirZ = 10.0f; // Repetir 10 veces a lo largo del eje Z
+
         glBegin(GL_QUADS);
-            glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.2f, -0.1f, 0.0f);
-            glTexCoord2f(1.0f, 0.0f); glVertex3f(0.2f, -0.1f, 0.0f);
-            glTexCoord2f(1.0f, 1.0f); glVertex3f(0.2f, 0.1f, 0.0f);
-            glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.2f, 0.1f, 0.0f);
+            glTexCoord2f(0.0f, 0.0f); glVertex3f(-50.0f, 0.0f, -50.0f);
+            glTexCoord2f(0.0f, repetirZ); glVertex3f(-50.0f, 0.0f, 50.0f);
+            glTexCoord2f(repetirX, repetirZ); glVertex3f(50.0f, 0.0f, 50.0f);
+            glTexCoord2f(repetirX, 0.0f); glVertex3f(50.0f, 0.0f, -50.0f);
         glEnd();
+
         glDisable(GL_TEXTURE_2D);
-    	glPopMatrix();
+
+		// --- DIBUJAR EL TECHO ---
+        glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para la textura
+        glEnable(GL_TEXTURE_2D);
+        texturaID_techo = cargarTextura("techoInfierno.tga"); // Carga la textura
+        glBindTexture(GL_TEXTURE_2D, texturaID_techo); // Enlaza la textura
+
+        glBegin(GL_QUADS);
+            glTexCoord2f(0.0f, 0.0f); glVertex3f(-50.0f, 5.0f, -50.0f);
+            glTexCoord2f(10.0f, 0.0f); glVertex3f(50.0f, 5.0f, -50.0f);
+            glTexCoord2f(10.0f, 10.0f); glVertex3f(50.0f, 5.0f, 50.0f);
+            glTexCoord2f(0.0f, 10.0f); glVertex3f(-50.0f, 5.0f, 50.0f);
+        glEnd();
+
+        glDisable(GL_TEXTURE_2D);
+
+        // --- DIBUJAR LAS PAREDES DEL LABERINTO ---
+        glColor3f(0.5f, 0.5f, 0.5f);
+        float altura_pared = 4.70f; // Altura de las paredes
+        float grosor_pared = 3.0f;
+
+        // Paredes exteriores
+        glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para la textura
+        glEnable(GL_TEXTURE_2D);
+        texturaID_pared = cargarTextura("wall.tga"); // Carga la textura
+        glBindTexture(GL_TEXTURE_2D, texturaID_pared); // Enlaza la textura
+
+     	for (float i = -50.0f; i <= 50.0f; i += grosor_pared) {
+            // Pared Norte
+            glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 1.0f); glVertex3f(i, 0.0f, -50.0f); // Invertido v
+                glTexCoord2f(1.0f, 1.0f); glVertex3f(i + grosor_pared, 0.0f, -50.0f); // Invertido v
+                glTexCoord2f(1.0f, 0.0f); glVertex3f(i + grosor_pared, altura_pared, -50.0f);
+                glTexCoord2f(0.0f, 0.0f); glVertex3f(i, altura_pared, -50.0f);
+            glEnd();
+
+            // Pared Sur
+            glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 1.0f); glVertex3f(i, 0.0f, 50.0f); // Invertido v
+                glTexCoord2f(1.0f, 1.0f); glVertex3f(i + grosor_pared, 0.0f, 50.0f); // Invertido v
+                glTexCoord2f(1.0f, 0.0f); glVertex3f(i + grosor_pared, altura_pared, 50.0f);
+                glTexCoord2f(0.0f, 0.0f); glVertex3f(i, altura_pared, 50.0f);
+            glEnd();
+
+            // Pared Oeste
+            glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 1.0f); glVertex3f(-50.0f, 0.0f, i); // Invertido v
+                glTexCoord2f(1.0f, 1.0f); glVertex3f(-50.0f, 0.0f, i + grosor_pared); // Invertido v
+                glTexCoord2f(1.0f, 0.0f); glVertex3f(-50.0f, altura_pared, i + grosor_pared);
+                glTexCoord2f(0.0f, 0.0f); glVertex3f(-50.0f, altura_pared, i);
+            glEnd();
+
+            // Pared Este
+            glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 1.0f); glVertex3f(50.0f, 0.0f, i); // Invertido v
+                glTexCoord2f(1.0f, 1.0f); glVertex3f(50.0f, 0.0f, i + grosor_pared); // Invertido v
+                glTexCoord2f(1.0f, 0.0f); glVertex3f(50.0f, altura_pared, i + grosor_pared);
+                glTexCoord2f(0.0f, 0.0f); glVertex3f(50.0f, altura_pared, i);
+            glEnd();
+        }
+
+        glDisable(GL_TEXTURE_2D);
+
+       	
+       	// --- DIBUJAR LAS PAREDES DEL LABERINTO (INTERIORES SEGÚN BOCETO) ---
+        glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para la textura
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, texturaID_pared);
 
 
+        // Pared vertical cerca del lado izquierdo
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -40.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, -40.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, -40.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -40.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -30.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, -30.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, -30.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -30.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -20.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, -20.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, -20.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -20.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -10.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, -10.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, -10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -10.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 0.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 0.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 0.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 0.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 10.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 10.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 10.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 20.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 20.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 20.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 20.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 30.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 30.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 30.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 30.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 40.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 40.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 40.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 40.0f); glEnd();
+
+        // Paredes horizontales que se extienden desde la pared izquierda
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 30.0f); glTexCoord2f(5.0f, 1.0f); glVertex3f(-40.0f + grosor_pared * 5, 0.0f, 30.0f); glTexCoord2f(5.0f, 0.0f); glVertex3f(-40.0f + grosor_pared * 5, altura_pared, 30.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 30.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 10.0f); glTexCoord2f(3.0f, 1.0f); glVertex3f(-40.0f + grosor_pared * 3, 0.0f, 10.0f); glTexCoord2f(3.0f, 0.0f); glVertex3f(-40.0f + grosor_pared * 3, altura_pared, 10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 10.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -10.0f); glTexCoord2f(4.0f, 1.0f); glVertex3f(-40.0f + grosor_pared * 4, 0.0f, -10.0f); glTexCoord2f(4.0f, 0.0f); glVertex3f(-40.0f + grosor_pared * 4, altura_pared, -10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -10.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -30.0f); glTexCoord2f(2.0f, 1.0f); glVertex3f(-40.0f + grosor_pared * 2, 0.0f, -30.0f); glTexCoord2f(2.0f, 0.0f); glVertex3f(-40.0f + grosor_pared * 2, altura_pared, -30.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -30.0f); glEnd();
+
+        // Pared vertical que conecta algunas horizontales
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, -20.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, -20.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, -20.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, -20.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, -10.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, -10.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, -10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, -10.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, 0.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, 0.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, 0.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, 0.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, 10.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, 10.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, 10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, 10.0f); glEnd();
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, 20.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, 20.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, 20.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, 20.0f); glEnd();
+
+        // Pared horizontal en la parte inferior derecha
+        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-10.0f, 0.0f, -40.0f); glTexCoord2f(6.0f, 1.0f); glVertex3f(-10.0f + grosor_pared * 6, 0.0f, -40.0f); glTexCoord2f(6.0f, 0.0f); glVertex3f(-10.0f + grosor_pared * 6, altura_pared, -40.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-10.0f, altura_pared, -40.0f); glEnd();
+
+        glDisable(GL_TEXTURE_2D);
+       	
+       	
+       	
+		// --- DIBUJAR LOS ENEMIGOS ---
+		    glColor3f(1.0f, 0.0f, 0.0f);
+		    for (int i = 0; i < NUM_ENEMIGOS; ++i) {
+		    dibujarCubo(posicion_enemigo[i][0], 1.0f + rebote_enemigo, posicion_enemigo[i][1], 2.0f, 2.0f, 2.0f);
+		}
+
+        // --- DIBUJAR LAS BALAS ---
+        glColor3f(1.0f, 1.0f, 0.0f);
+        for (const auto& bala : balas) {
+            dibujarCubo(bala.posicion[0], bala.posicion[1], bala.posicion[2], 0.2f, 0.2f, 0.2f);
+        }
+
+        // --- DIBUJAR EL ARMA CERCA DE LA CÁMARA ---
+        glPushMatrix();
+            glTranslatef(posicion_camara_x + direccion_camara_x * 0.5f, posicion_camara_y + altura_salto - 0.3f + direccion_camara_y * 0.5f, posicion_camara_z + direccion_camara_z * 0.5f);
+            glRotatef(angulo_pitch, 1.0f, 0.0f, 0.0f);
+            glRotatef(angulo_yaw + 90.0f, 0.0f, 1.0f, 0.0f);
+
+            glEnable(GL_TEXTURE_2D);
+            if (esta_animando_disparo && !pistola_animacion_texturas.empty()) {
+                glBindTexture(GL_TEXTURE_2D, pistola_animacion_texturas[pistola_animacion_cuadro_actual % pistola_animacion_texturas.size()]);
+            } else {
+                glBindTexture(GL_TEXTURE_2D, texturaID_pistola);
+            }
+            glColor3f(1.0f, 1.0f, 1.0f);
+            glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.2f, -0.1f, 0.0f);
+                glTexCoord2f(1.0f, 0.0f); glVertex3f(0.2f, -0.1f, 0.0f);
+                glTexCoord2f(1.0f, 1.0f); glVertex3f(0.2f, 0.1f, 0.0f);
+                glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.2f, 0.1f, 0.0f);
+            glEnd();
+            glDisable(GL_TEXTURE_2D);
+        glPopMatrix();
 
         // Restaurar matrices de la escena del juego
         glPopMatrix();
         glMatrixMode(GL_PROJECTION);
         glPopMatrix();
         glMatrixMode(GL_MODELVIEW);
-        
+
         // Llamada al HUD en la escena del juego
         glDisable(GL_DEPTH_TEST);
         dibujarHUD();
-        
-        // Dibujar el minimapa
-        dibujarMinimapa();
 
-	  	glEnable(GL_DEPTH_TEST);
+        // Dibujar el minimapa
+    	dibujarMinimapa(grosor_pared, altura_pared); // Pasa los valores aquí
+
+        glEnable(GL_DEPTH_TEST);
     }
 
     glutSwapBuffers();
@@ -601,7 +759,7 @@ void manejarTeclas(unsigned char key, int x, int y) {
     }
 
     if (juego_terminado) return;
-    float velocidad_movimiento = 0.14f;
+    float velocidad_movimiento = 1.03f;
 
     float derechaX = -direccion_camara_z;
     float derechaZ = direccion_camara_x;
@@ -670,7 +828,7 @@ int main(int argc, char** argv) {
 
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(ancho_pantalla, alto_pantalla);
-    glutCreateWindow("Prototipo de Juego FPS");
+    glutCreateWindow("Prototipo de Juego FPS DOOM");
 
     glEnable(GL_DEPTH_TEST);
 
