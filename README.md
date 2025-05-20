@@ -1,4 +1,4 @@
-# DOOM - Grupo 11 - T1
+# DOOM - Grupo 11 - T2
 
 Este es un prototipo de juego de disparos en primera persona (FPS) desarrollado como parte del Trabajo Práctico 1 del Grupo 11. El proyecto está construido utilizando OpenGL y GLUT para la renderización gráfica y la gestión de la ventana.
 
