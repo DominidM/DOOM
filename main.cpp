@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdio.h>
 #include <string.h>
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -13,8 +14,12 @@
 #endif
 
 #define M_PI 3.14159265358979323846
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#include <string>
+
+
 
 // ==== CONSTANTES ====
 const float VELOCIDAD_MOVIMIENTO = 0.14f;
@@ -46,17 +51,25 @@ int vidas = 3;
 bool juego_terminado = false;
 bool juego_iniciado = false; // Nuevo estado para la pantalla de inicio
 
+//============MENU
+int modoVisual = 0;      // ELECCION DIA
+int sonidoActivo = 0;    // ELECCION SONIDO
 
-float rebote_enemigo = 0.1f;
+float rebote_enemigo = 0.2f;
 float direccion_rebote = 1.0f;
-const int NUM_ENEMIGOS = 5;
+const int NUM_ENEMIGOS = 8;
 float posicion_enemigo[NUM_ENEMIGOS][2] = {
     {-5.0f, 5.0f},
     {5.0f, -5.0f},
     {0.0f, 7.0f},
     {-10.0f, -10.0f}, // Posición del enemigo 4
-    {15.0f, 2.0f}      // Posición del enemigo 5
+    {15.0f, 2.0f},      
+	{25.0f, 2.0f}, 
+	{55.0f, 2.0f} // Posición del enemigo 5
 };
+//============arma
+
+bool esta_animando_disparo = false;
 
 int ancho_pantalla = 1200;
 int alto_pantalla = 800;
@@ -76,28 +89,12 @@ GLuint texturaID_techo;
 GLuint texturaID_suelo;
 GLuint texturaID_cara_doomguy;
 GLuint texturaID_pistola;
+GLuint texturaHUD = 0;
+
 std::vector<GLuint> pistola_animacion_texturas;
 int pistola_animacion_cuadro_actual = 0;
-bool esta_animando_disparo = false;
 int tiempo_inicio_animacion = 0;
 int duracion_entre_cuadros = 80; // Milisegundos por cuadro
-std::vector<Bala> balas;
-
-
-void cargarAnimacionPistola(const char* archivo_gif) {
-    // --- Lógica simulada para cargar la animación ---
-    printf("Cargando animación de pistola desde %s\n", archivo_gif);
-    // *** ¡IMPORTANTE! ***
-    // Aquí DEBES implementar la lógica real para cargar los cuadros del GIF.
-    // Esto requerirá una biblioteca externa para decodificar GIFs (como libgif).
-    // El siguiente es un ejemplo SIMULADO para que el resto del código funcione
-    // sin errores, pero NO CARGA un GIF real.
-    for (int i = 0; i < 5; ++i) {
-        GLuint textura_frame = 0; // Simula la carga de un cuadro
-        pistola_animacion_texturas.push_back(textura_frame);
-    }
-    // --- Reemplaza la simulación con tu implementación real de carga de GIF ---
-}
 
 //Función para cargar la textura
 GLuint cargarTextura(const char* ruta) {
@@ -120,6 +117,76 @@ GLuint cargarTextura(const char* ruta) {
     stbi_image_free(data);
 
     return id_textura;
+}
+
+
+std::vector<GLuint> arma_frames;
+int arma_frame_actual = 0;
+float arma_tiempo = 0.0f;
+float arma_duracion_frame = 0.1f;
+
+void cargarFramesArma() {
+    arma_frames.push_back(cargarTextura("pistola_0.png"));
+    arma_frames.push_back(cargarTextura("pistola_1.png"));
+    arma_frames.push_back(cargarTextura("pistola_2.png"));
+    arma_frames.push_back(cargarTextura("pistola_3.png"));
+}
+
+
+
+void dibujarArmaAnimada() {
+    // --- Cambiar a proyección ortográfica 2D ---
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(0, ancho_pantalla, 0, alto_pantalla);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    // --- Dibuja el arma centrada en la parte inferior de la pantalla ---
+    float arma_ancho = 280; // Cambia esto según el tamaño real de tu imagen
+    float arma_alto  = 280; // Cambia esto según el tamaño real de tu imagen
+    float x = (ancho_pantalla - arma_ancho) / 2.0f;
+    float y = 100; // parte inferior
+            
+	glDisable(GL_LIGHTING);        // Desactiva la iluminación global
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_TEXTURE_2D);
+    if (!arma_frames.empty()) {
+        glBindTexture(GL_TEXTURE_2D, arma_frames[arma_frame_actual]);
+    }
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glBegin(GL_QUADS);
+        glTexCoord2f(0.0f, 1.0f); glVertex2f(x, y);
+	    glTexCoord2f(1.0f, 1.0f); glVertex2f(x + arma_ancho, y);
+	    glTexCoord2f(1.0f, 0.0f); glVertex2f(x + arma_ancho, y + arma_alto);
+	    glTexCoord2f(0.0f, 0.0f); glVertex2f(x, y + arma_alto);
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
+	glDisable(GL_BLEND);
+
+    // --- Restaurar matrices ---
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+void actualizarAnimacionArma(float deltaTime) {
+    if (esta_animando_disparo) {
+        arma_tiempo += deltaTime;
+        if (arma_tiempo >= arma_duracion_frame) {
+            arma_tiempo = 0.0f;
+            arma_frame_actual++;
+            if (arma_frame_actual >= arma_frames.size()) {
+                arma_frame_actual = 0;        // Vuelve al frame 0 (reposo)
+                esta_animando_disparo = false; // Termina la animación
+            }
+        }
+    }
 }
 
 // Estructura para representar la caja de colisión de un objeto (enemigo)
@@ -177,6 +244,30 @@ bool rayoIntersectaCaja(float origenX, float origenY, float origenZ,
     return true;
 }
 
+
+
+void manejarClickMouse(int button, int state, int x, int y) {
+    // Solo actúa si el botón izquierdo es presionado, el juego está iniciado y no está terminado
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN && juego_iniciado && !juego_terminado) {
+        // --- Animación del disparo, igual que en 'f' ---
+        esta_animando_disparo = true;
+        arma_frame_actual = 0;
+        arma_tiempo = 0.0f;
+
+        // --- Chequea si impacta un enemigo ---
+        float distancia_impacto;
+        for (int i = 0; i < 3; ++i) {
+            CajaColision caja_enemigo = obtenerCajaColisionEnemigo(i);
+            if (rayoIntersectaCaja(posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
+                                   direccion_camara_x, direccion_camara_y, direccion_camara_z,
+                                   caja_enemigo, distancia_impacto)) {
+                std::cout << "¡Impacto en el enemigo " << i << " a distancia " << distancia_impacto << "!" << std::endl;
+                break;
+            }
+        }
+    }
+}
+
 // ==== UTILITARIAS ====
 void dibujarHUD() {
     // Cambiar a modo 2D
@@ -188,15 +279,20 @@ void dibujarHUD() {
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
     glLoadIdentity();
-
+	
     // Dibujar barra inferior del HUD
-    glColor3f(0.1f, 0.1f, 0.1f); // Gris oscuro
-    glBegin(GL_QUADS);
-        glVertex2f(0, 0);
-        glVertex2f(ancho_pantalla, 0);
-        glVertex2f(ancho_pantalla, 100);
-        glVertex2f(0, 100);
-    glEnd();
+    glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, texturaHUD);
+	glColor3f(1, 1, 1);  // Color blanco para no alterar el color de la textura
+	
+	glBegin(GL_QUADS);
+	    glTexCoord2f(0, 0); glVertex2f(0, 0);                          // Inferior izquierda
+	    glTexCoord2f(1, 0); glVertex2f(ancho_pantalla, 0);             // Inferior derecha
+	    glTexCoord2f(1, 1); glVertex2f(ancho_pantalla, 100);           // Superior derecha
+	    glTexCoord2f(0, 1); glVertex2f(0, 100);                        // Superior izquierda
+	glEnd();
+
+	glDisable(GL_TEXTURE_2D);
 
        // Texto de vidas (más grande)
     char buffer[50];
@@ -250,32 +346,28 @@ void dibujarHUD() {
 }
 
 void movimientoMouse(int x, int y) {
-    if (centrar_cursor) {
-        centrar_cursor = false;
+    static bool primer_vez = true;
+    if (primer_vez) {
+        glutWarpPointer(centro_X, centro_Y);
+        primer_vez = false;
         return;
     }
 
-    if (primer_mouse) {
-        ultimo_mouseX = x;
-        ultimo_mouseY = y;
-        primer_mouse = false;
-    }
+    int dx = x - centro_X;
+    int dy = centro_Y - y; // arriba es positivo
 
-    float desplazamientoX = x - ultimo_mouseX;
-    float desplazamientoY = ultimo_mouseY - y; // y va de arriba a abajo
-    ultimo_mouseX = x;
-    ultimo_mouseY = y;
+    if (dx == 0 && dy == 0)
+        return;
 
-    float sensibilidad = 0.1f;
-    desplazamientoX *= sensibilidad;
-    desplazamientoY *= sensibilidad;
+    float sensibilidad = 0.1f; // Ajusta este valor según prefieras
+    angulo_yaw   += dx * sensibilidad;
+    angulo_pitch += dy * sensibilidad;
 
-    angulo_yaw += desplazamientoX;
-    angulo_pitch += desplazamientoY;
-
+    // Limita el pitch para no dar la vuelta completa (para evitar "flip" vertical)
     if (angulo_pitch > 89.0f) angulo_pitch = 89.0f;
     if (angulo_pitch < -89.0f) angulo_pitch = -89.0f;
 
+    // Actualiza la dirección de la cámara
     float radianes_yaw = angulo_yaw * M_PI / 180.0f;
     float radianes_pitch = angulo_pitch * M_PI / 180.0f;
 
@@ -283,12 +375,8 @@ void movimientoMouse(int x, int y) {
     direccion_camara_y = sin(radianes_pitch);
     direccion_camara_z = sin(radianes_yaw) * cos(radianes_pitch);
 
-    // Recentrar cursor para simular "captura"
-    centrar_cursor = true;
+    // Recentrar el mouse para que siempre esté en el centro (como FPS clásico)
     glutWarpPointer(centro_X, centro_Y);
-    ultimo_mouseX = centro_X;
-    ultimo_mouseY = centro_Y;
-
 
     glutPostRedisplay();
 }
@@ -482,23 +570,692 @@ void dibujarMinimapa(float grosor_pared, float altura_pared) {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
+bool mostrarMenu = false;
+int opcionSeleccionada = -1;
+//===========ILUMINACION
 
 
+void configurarIluminacion() {
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+
+    GLfloat luz_dia[]     = { 1.0f, 1.0f, 1.0f, 1.0f };  // Blanca
+    GLfloat luz_noche[]   = { 0.1f, 0.1f, 0.3f, 1.0f };  // Azul tenue
+
+    GLfloat pos_luz[]     = { 0.0f, 10.0f, 10.0f, 1.0f };
+
+    if (modoVisual == 0) {
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, luz_dia);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, luz_dia);
+    } else {
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, luz_noche);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, luz_noche);
+    }
+
+    glLightfv(GL_LIGHT0, GL_POSITION, pos_luz);
+}
 
 
+void dibujarTexto(float x, float y, const std::string& texto) {
+    glRasterPos2f(x, y);
+    for (size_t i = 0; i < texto.length(); i++) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, texto[i]);
+    }
+}
 
+void onMenu(unsigned char tecla, int x, int y) {
+switch (tecla) {
+        case 'm': // Mostrar/Ocultar menú
+        case 'M':
+            mostrarMenu = !mostrarMenu;
+            break;
+        case '1':
+            if (mostrarMenu) modoVisual = 0; // Día
+            break;
+        case '2':
+            if (mostrarMenu) modoVisual = 1; // Noche
+            break;
+        case '3':
+            if (mostrarMenu) sonidoActivo = 1;
+            break;
+        case '4':
+            if (mostrarMenu) sonidoActivo = 0;
+            break;
+        case '5':
+            if (mostrarMenu) exit(0);
+            break;
+    }
+    glutPostRedisplay();
+}
 
+void crearMenu() {
+    if (!mostrarMenu) return;
+
+    // Guardar la matriz actual
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(0, ancho_ventana, 0, alto_ventana); // Coordenadas en píxeles
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST); // No profundidad para 2D
+    glColor3f(0.0, 0.0, 0.0);
+
+    // Fondo negro semitransparente del menú
+    glBegin(GL_QUADS);
+        glVertex2f(50, alto_ventana - 50);
+        glVertex2f(350, alto_ventana - 50);
+        glVertex2f(350, alto_ventana - 300);
+        glVertex2f(50, alto_ventana - 300);
+    glEnd();
+
+    // Dibujar texto del menú
+    glColor3f(1.0, 1.0, 1.0); // Blanco
+    dibujarTexto(70, alto_ventana - 80, "MENU:");
+    dibujarTexto(70, alto_ventana - 110, "1. MODO DIA");
+    dibujarTexto(70, alto_ventana - 140, "2. MODO NOCHE");
+    dibujarTexto(70, alto_ventana - 170, "3. ACTIVAR SONIDO");
+    dibujarTexto(70, alto_ventana - 200, "4. DESACTIVAR SONIDO");
+    dibujarTexto(70, alto_ventana - 230, "5. SALIR");
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+
+    // Restaurar las matrices originales
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+}
+
+void BordeDOOM(){
+	glColor3f(0.0f,0.0f,0.0f);
+	glLineWidth(10.0f);
+	glBegin(GL_LINE_LOOP);
+		glVertex2f(-0.8f,0.72f);
+		glVertex2f(-0.5f,0.71f);
+		glVertex2f(-0.41f,0.63f);
+		glVertex2f(-0.42f,0.25f);
+		glVertex2f(-0.73f,-0.06f);
+		glVertex2f(-0.79f,-0.06f);
+		glVertex2f(-0.79f,-0.09f);
+		glVertex2f(-0.77f,0.65f);
+		glVertex2f(-0.8f,0.68f);
+	glEnd();
+	glBegin(GL_LINE_LOOP);
+		glVertex2f(-0.41f,0.63f);
+		glVertex2f(-0.33f,0.71f);
+		glVertex2f(-0.14f,0.71f);
+		glVertex2f(-0.05f,0.63f);
+		glVertex2f(-0.06f,0.24f);
+		glVertex2f(-0.22f,0.08f);
+		glVertex2f(-0.25f,0.08f);
+		glVertex2f(-0.42f,0.25f);
+	glEnd();
+	glBegin(GL_LINE_LOOP);
+		glVertex2f(-0.05f,0.63f);
+		glVertex2f(0.03f,0.71f);
+		glVertex2f(0.22f,0.71f);
+		glVertex2f(0.31f,0.63f);
+		glVertex2f(0.3f,0.24f);
+		glVertex2f(0.13f,0.08f);
+		glVertex2f(0.1f,0.08f);
+		glVertex2f(-0.06f,0.24f);
+	glEnd();
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(0.28f,0.71f);
+		glVertex2f(0.51f,0.7f);
+		glVertex2f(0.56f,0.65f);
+		glVertex2f(0.61f,0.7f);
+		glVertex2f(0.84f,0.7f);
+		glVertex2f(0.84f,0.67f);
+		glVertex2f(0.81f,0.64f);
+		glVertex2f(0.81f,-0.1f);
+		glVertex2f(0.67f,0.01f);
+		glVertex2f(0.67f,0.4f);
+	glEnd();
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(0.67f,0.35f);
+		glVertex2f(0.64f,0.35f);
+		glVertex2f(0.64f,0.32f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(0.62f,0.32f);
+		glVertex2f(0.62f,0.23f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(0.59f,0.23f);
+		glVertex2f(0.59f,0.15f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(0.53f,0.15f);
+		glVertex2f(0.53f,0.23f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(0.56f,0.09f);
+		glVertex2f(0.56f,0.15f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(0.5f,0.23f);
+		glVertex2f(0.5f,0.31f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(0.47f,0.32f);
+		glVertex2f(0.47f,0.4f);
+	glEnd();
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(0.45f,0.46f);
+		glVertex2f(0.44f,0.1f);
+		glVertex2f(0.3f,0.24f);
+		glVertex2f(0.31f,0.65f);
+		glVertex2f(0.28f,0.65f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(0.56f,0.65f);
+		glVertex2f(0.56f,0.6f);
+	glEnd();
+	
+	
+}
+void BordeDOO(){
+	glColor3f(0.0f,0.0f,0.0f);
+	glBegin(GL_QUADS);
+		glVertex2f(-0.63f,0.27f);
+		glVertex2f(-0.63f,0.54f);
+		glVertex2f(-0.6f,0.54f);
+		glVertex2f(-0.6f,0.27f);
+	glEnd();
+	glBegin(GL_QUADS);
+		glVertex2f(-0.6f,0.54f);
+		glVertex2f(-0.6f,0.29f);
+		glVertex2f(-0.58f,0.29f);
+		glVertex2f(-0.57f,0.54f);
+	glEnd();
+	
+	glColor3f(0.792f,0.294f,0.149f);
+	glLineWidth(10.0f);
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(-0.64f,0.38f);
+		glVertex2f(-0.64f,0.54f);//B
+		glVertex2f(-0.56f,0.54f);
+		glVertex2f(-0.56f,0.45f);
+	glEnd();
+	
+	glColor3f(0.968f,0.792f,0.192f);
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(-0.64f,0.38f);
+		glVertex2f(-0.64f,0.26f);
+		glVertex2f(-0.57f,0.29f);
+		glVertex2f(-0.56f,0.45f);
+	glEnd();
+	
+	glColor3f(0.0f,0.0f,1.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.65f,0.38f);
+		glVertex2f(-0.74f,0.29f);
+		glVertex2f(-0.73f,0.67f);
+		glVertex2f(-0.65f,0.67f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.65f,0.67f);
+		glVertex2f(-0.49f,0.67f);
+		glVertex2f(-0.46f,0.64f);
+		glVertex2f(-0.46f,0.55f);
+		glVertex2f(-0.65f,0.55f);
+	glEnd();
+	glBegin(GL_TRIANGLES);
+		glVertex2f(-0.46f,0.55f);
+		glVertex2f(-0.55f,0.45f);
+		glVertex2f(-0.55f,0.55f);
+	glEnd();
+}
+void BordeD_RED(){
+	glColor3f(1.0f,0.0f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.74f,0.18f);//G
+		glVertex2f(-0.75f,-0.03f);//I
+		glVertex2f(-0.47f,0.24f);//K
+		glVertex2f(-0.47f,0.35f);//J
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.74f,0.29f);//A
+		glVertex2f(-0.74f,0.18f);//G
+		glVertex2f(-0.65f,0.23f);//n
+		glVertex2f(-0.65f,0.38f);//n6
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.55f,0.45f);//H
+		glVertex2f(-0.56f,0.29f);//n5
+		glVertex2f(-0.47f,0.35f);//J
+		glVertex2f(-0.46f,0.55f);//F
+	glEnd();
+}
+void BordeO_RED(){
+	glColor3f(1.0f,0.0f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.36f,0.55f);
+		glVertex2f(-0.275f,0.47f);
+		glVertex2f(-0.275f,0.15f);
+		glVertex2f(-0.37f,0.25f);	
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.3f,0.29f);
+		glVertex2f(-0.13f,0.21f);
+		glVertex2f(-0.21f,0.12f);
+		glVertex2f(-0.25f,0.12f);
+		glVertex2f(-0.3f,0.17f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.18f,0.365f);
+		glVertex2f(-0.1f,0.28f);
+		glVertex2f(-0.1f,0.24f);
+		glVertex2f(-0.13f,0.21f);
+		glVertex2f(-0.19f,0.2f);
+	glEnd();
+}
+void BordeOO_RED(){
+	glColor3f(1.0f,0.0f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.01f,0.3f);
+		glVertex2f(0.08f,0.38f);
+		glVertex2f(0.08f,0.14f);
+		glVertex2f(-0.01f,0.23f);	
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.06f,0.23f);
+		glVertex2f(0.18f,0.28f);
+		glVertex2f(0.25f,0.23f);
+		glVertex2f(0.14f,0.12f);
+		glVertex2f(0.11f,0.12f);
+		glVertex2f(0.06f,0.16f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.18f,0.46f);
+		glVertex2f(0.27f,0.55f);
+		glVertex2f(0.26f,0.28f);
+		glVertex2f(0.25f,0.23f);
+		glVertex2f(0.17f,0.28f);
+	glEnd();
+}
+void BordeM_RED(){
+	glColor3f(1.0f,0.0f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(0.35f,0.56f);
+		glVertex2f(0.4f,0.5f);
+		glVertex2f(0.4f,0.18f);
+		glVertex2f(0.35f,0.23f);	
+	glEnd();
+	glBegin(GL_TRIANGLES);
+		glVertex2f(0.50f,0.47f);//C
+		glVertex2f(0.62f,0.35f);
+		glVertex2f(0.50f,0.35f);
+		
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.52f,0.35f);
+		glVertex2f(0.6f,0.35f);
+		glVertex2f(0.6f,0.31f);
+		glVertex2f(0.52f,0.31f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.54f,0.31f);
+		glVertex2f(0.6f,0.31f);
+		glVertex2f(0.6f,0.28f);
+		glVertex2f(0.54f,0.28f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.71f,0.31f);
+		glVertex2f(0.77f,0.26f);
+		glVertex2f(0.77f,-0.01f);
+		glVertex2f(0.71f,0.03f);
+	glEnd();
+	
+}
+void BordeM(){
+	glColor3f(0.0f,0.0f,1.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(0.35f,0.665f);
+		glVertex2f(0.52f,0.665f);
+		glVertex2f(0.52f,0.56f);
+		glVertex2f(0.35f,0.56f);	
+	glEnd();
+	glBegin(GL_TRIANGLES);
+		glVertex2f(0.35f,0.56f);
+		glVertex2f(0.4f,0.56f);
+		glVertex2f(0.4f,0.5f);
+	glEnd();
+	glBegin(GL_TRIANGLES);
+		glVertex2f(0.4f,0.56f);
+		glVertex2f(0.55f,0.56f);
+		glVertex2f(0.54f,0.43f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.54f,0.52f);
+		glVertex2f(0.77f,0.52f);
+		glVertex2f(0.62f,0.35f);
+		glVertex2f(0.54f,0.43f);	
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.71f,0.49f);
+		glVertex2f(0.77f,0.52f);
+		glVertex2f(0.77f,0.26f);
+		glVertex2f(0.71f,0.31f);	
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.57f,0.58f);
+		glVertex2f(0.77f,0.58f);
+		glVertex2f(0.77f,0.52f);
+		glVertex2f(0.57f,0.51f);		
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.6f,0.66f);
+		glVertex2f(0.77f,0.66f);
+		glVertex2f(0.77f,0.58f);
+		glVertex2f(0.6f,0.58f);		
+	glEnd();
+	
+}
+void letraD(){
+	glColor3f(1.0f,0.3f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.76f,0.7f);
+		glVertex2f(-0.79f,-0.05f);
+		glVertex2f(-0.72f,-0.05f);
+		glVertex2f(-0.7f,0.7f);
+	glEnd();
+	
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.7f,0.7f);
+		glVertex2f(-0.5f,0.7f);
+		glVertex2f(-0.42f,0.64f);
+		glVertex2f(-0.43f,0.24f);
+		glVertex2f(-0.72f,-0.05f);
+	glEnd();
+	
+	glColor3f(0.635f,0.635f,0.635f);
+	glLineWidth(10.0f);
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(-0.8f,0.69f);
+		glVertex2f(-0.5f,0.68f);
+		glVertex2f(-0.41f,0.61f);
+	glEnd();
+}
+void letraO(){
+	glColor3f(1.0f,0.3f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.42f,0.64f);
+		glVertex2f(-0.33f,0.71f);
+		glVertex2f(-0.13f,0.71f);
+		glVertex2f(-0.06f,0.63f);
+		glVertex2f(-0.06f,0.24f);
+		glVertex2f(-0.23f,0.08f);
+		glVertex2f(-0.26f,0.08f);
+		glVertex2f(-0.43f,0.24f);
+	glEnd();
+	
+	glColor3f(0.635f,0.635f,0.635f);
+	glLineWidth(10.0f);
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(-0.4f,0.61f);
+		glVertex2f(-0.33f,0.68f);
+		glVertex2f(-0.11f,0.675f);
+	glEnd();
+}
+void letraO_2(){
+	glColor3f(1.0f,0.3f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.06f,0.63f);
+		glVertex2f(0.03f,0.71f);
+		glVertex2f(0.22f,0.71f);
+		glVertex2f(0.31f,0.63f);
+		glVertex2f(0.3f,0.24f);
+		glVertex2f(0.13f,0.08f);
+		glVertex2f(0.1f,0.08f);
+		glVertex2f(-0.06f,0.24f);
+	glEnd();
+	
+	glColor3f(0.635f,0.635f,0.635f);
+	glLineWidth(10.0f);
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(-0.04f,0.62f);
+		glVertex2f(0.03f,0.68f);
+		glVertex2f(0.25f,0.68f);
+	glEnd();
+}
+void letraM(){
+	glColor3f(1.0f,0.3f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(0.31f,0.71f);
+		glVertex2f(0.5f,0.7f);
+		glVertex2f(0.56f,0.65f);
+		glVertex2f(0.56f,0.46f);
+		glVertex2f(0.31f,0.46f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.31f,0.46f);
+		glVertex2f(0.45f,0.46f);
+		glVertex2f(0.44f,0.1f);
+		glVertex2f(0.3f,0.24f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.31f,0.46f);
+		glVertex2f(0.45f,0.46f);
+		glVertex2f(0.44f,0.1f);
+		glVertex2f(0.3f,0.24f);
+	glEnd();
+	glBegin(GL_TRIANGLES);
+		glVertex2f(0.44f,0.46f);
+		glVertex2f(0.69f,0.46f);
+		glVertex2f(0.56f,0.09f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.56f,0.65f);
+		glVertex2f(0.61f,0.7f);
+		glVertex2f(0.81f,0.7f);
+		glVertex2f(0.81f,0.46f);
+		glVertex2f(0.56f,0.46f);	
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.67f,0.46f);
+		glVertex2f(0.81f,0.46f);
+		glVertex2f(0.81f,-0.1f);
+		glVertex2f(0.67f,0.01f);
+	glEnd();
+	
+	glColor3f(0.635f,0.635f,0.635f);
+	glLineWidth(10.0f);
+	glBegin(GL_LINES);
+		glVertex2f(0.28f,0.68f);
+		glVertex2f(0.53f,0.68f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(0.59f,0.67f);
+		glVertex2f(0.84f,0.67f);
+	glEnd();
+}
+void MotosierraBorde(){
+	glColor3f(1.0f,1.0f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.85f,-0.36f);
+		glVertex2f(-0.22f,-0.36f);
+		glVertex2f(-0.22f,-0.65f);
+		glVertex2f(-0.71f,-0.67f);
+		glVertex2f(-0.86f,-0.58f);
+	glEnd();
+	glColor3f(0.5f,0.5f,0.5f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.33f,-0.12f);
+		glVertex2f(-0.19f,-0.04f);
+		glVertex2f(-0.02f,-0.04f);
+		glVertex2f(0.09f,-0.16f);
+		glVertex2f(0.02f,-0.17f);
+		glVertex2f(-0.27f,-0.17f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(0.02f,-0.17f);
+		glVertex2f(0.09f,-0.16f);
+		glVertex2f(0.09f,-0.37f);
+		glVertex2f(0.02f,-0.37f);
+	glEnd();
+	glColor3f(0.0f,0.0f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.22f,-0.36f);
+		glVertex2f(0.81f,-0.38f);
+		glVertex2f(0.87f,-0.41f);
+		glVertex2f(0.87f,-0.57f);
+		glVertex2f(0.78f,-0.63f);
+		glVertex2f(-0.22f,-0.62f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.43f,-0.65f);
+		glVertex2f(-0.31f,-0.65f);
+		glVertex2f(-0.3f,-0.7f);
+		glVertex2f(-0.39f,-0.7f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.22f,-0.62f);
+		glVertex2f(-0.08f,-0.62f);
+		glVertex2f(-0.17f,-0.67f);
+		glVertex2f(-0.23f,-0.65f);
+	glEnd();
+	
+	glColor3f(0.5f,0.5f,0.5f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.85f,-0.36f);
+		glVertex2f(-0.71f,-0.18f);
+		glVertex2f(-0.5f,-0.12f);
+		glVertex2f(-0.27f,-0.12f);
+		glVertex2f(-0.09f,-0.26f);
+		glVertex2f(-0.1f,-0.36f);
+		glVertex2f(-0.85f,-0.36f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.41f,-0.71f);
+		glVertex2f(-0.44f,-0.65f);
+		glVertex2f(-0.44f,-0.62f);
+		glVertex2f(-0.41f,-0.59f);
+		glVertex2f(-0.36f,-0.62f);
+		glVertex2f(-0.36f,-0.71f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.44f,-0.62f);
+		glVertex2f(-0.5f,-0.59f);
+		glVertex2f(-0.49f,-0.34f);
+		glVertex2f(-0.41f,-0.34f);
+		glVertex2f(-0.41f,-0.59f);
+	glEnd();
+	glColor3f(1.0f,0.0f,0.0f);
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.84f,-0.38f);
+		glVertex2f(-0.61f,-0.38f);
+		glVertex2f(-0.59f,-0.52f);
+		glVertex2f(-0.44f,-0.65f);
+		glVertex2f(-0.5f,-0.66f);
+		glVertex2f(-0.71f,-0.66f);
+		glVertex2f(-0.85f,-0.58f);
+		
+	glEnd();
+	glColor3f(0.0f,0.0f,0.0f);
+	glLineWidth(10.0f);
+	glBegin(GL_LINE_LOOP);
+		glVertex2f(-0.86f,-0.58f);
+		glVertex2f(-0.85f,-0.36f);
+		glVertex2f(-0.71f,-0.18f);
+		glVertex2f(-0.5f,-0.12f);
+		glVertex2f(-0.33f,-0.12f);
+		glVertex2f(-0.19f,-0.04f);
+		glVertex2f(-0.02f,-0.04f);
+		glVertex2f(0.09f,-0.16f);
+		glVertex2f(0.08f,-0.35f);
+		glVertex2f(0.8f,-0.36f);
+		glVertex2f(0.88f,-0.42f);
+		glVertex2f(0.88f,-0.54f);
+		glVertex2f(0.77f,-0.65f);
+		glVertex2f(-0.08f,-0.64f);
+		glVertex2f(-0.17f,-0.67f);
+		glVertex2f(-0.31f,-0.66f);
+		glVertex2f(-0.3f,-0.7f);
+		glVertex2f(-0.39f,-0.7f);
+		glVertex2f(-0.43f,-0.66f);
+		glVertex2f(-0.71f,-0.67f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.68f,-0.33f);
+		glVertex2f(-0.49f,-0.33f);
+		glVertex2f(-0.54f,-0.27f);
+		glVertex2f(-0.54f,-0.2f);
+		glVertex2f(-0.63f,-0.2f);
+		glVertex2f(-0.68f,-0.25f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(-0.22f,-0.36f);
+		glVertex2f(-0.22f,-0.62f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(-0.36f,-0.36f);
+		glVertex2f(-0.36f,-0.47f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(-0.39f,-0.42f);
+		glVertex2f(-0.39f,-0.56f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(-0.34f,-0.69f);
+		glVertex2f(-0.34f,-0.62f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(-0.37f,-0.62f);
+		glVertex2f(-0.37f,-0.58f);
+	glEnd();
+	glEnd();
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(-0.1f,-0.36f);
+		glVertex2f(-0.1f,-0.26f);
+		glVertex2f(-0.25f,-0.17f);
+		glVertex2f(0.02f,-0.18f);
+		glVertex2f(0.02f,-0.365f);
+	glEnd();
+	glColor3f(0.0f,1.0f,0.0f);
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(-0.18f,-0.38f);
+		glVertex2f(0.81f,-0.39f);
+		glVertex2f(0.85f,-0.42f);
+		glVertex2f(0.85f,-0.55f);
+		glVertex2f(0.78f,-0.62f);
+		glVertex2f(-0.21f,-0.61f);
+	glEnd();
+	glColor3f(0.0f,0.0f,0.0f);
+	glBegin(GL_LINE_STRIP);
+		glVertex2f(0.04f,-0.13f);
+		glVertex2f(-0.27f,-0.12f);
+		glVertex2f(-0.27f,-0.17f);
+	glEnd();
+	glBegin(GL_LINES);
+		glVertex2f(-0.34f,-0.21f);
+		glVertex2f(-0.29f,-0.21f);
+	glEnd();
+	glBegin(GL_POLYGON);
+		glVertex2f(-0.37f,-0.22f);
+		glVertex2f(-0.29f,-0.22f);
+		glVertex2f(-0.29f,-0.36f);
+		glVertex2f(-0.37f,-0.36f);
+	glEnd();
+}
 
 void dibujarEscena() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
+    configurarIluminacion();
 
     if (!juego_iniciado) {
         // --- PANTALLA DE INICIO ---
-        // Deshabilitar la prueba de profundidad para dibujar en 2D
         glDisable(GL_DEPTH_TEST);
 
-        // Dibujar la pantalla de inicio en modo ortogonal 2D
+        // Fondo degradado (coordenadas en píxeles)
         glMatrixMode(GL_PROJECTION);
         glPushMatrix();
         glLoadIdentity();
@@ -508,49 +1265,70 @@ void dibujarEscena() {
         glPushMatrix();
         glLoadIdentity();
 
-        // Dibujar el fondo con degradado vertical
+        // Fondo degradado
         glBegin(GL_QUADS);
             glColor3f(0.2f, 0.1f, 0.0f); glVertex2f(0, 0);
             glColor3f(0.4f, 0.2f, 0.0f); glVertex2f(ancho_pantalla, 0);
             glColor3f(0.2f, 0.1f, 0.0f); glVertex2f(ancho_pantalla, alto_pantalla);
             glColor3f(0.4f, 0.2f, 0.0f); glVertex2f(0, alto_pantalla);
         glEnd();
-
-        // Dibujar el título "DOOM - GRUPO 11 - T1"
-        glColor3f(1.0f, 0.8f, 0.0f); // Amarillo dorado
-        const char* texto_titulo = "DOOM - GRUPO 11 - T1";
-        int ancho_texto_titulo = 0;
-        for (const char* c = texto_titulo; *c; ++c) {
-            ancho_texto_titulo += glutBitmapWidth(GLUT_BITMAP_9_BY_15, *c);
-        }
-        float posicion_texto_x = ancho_pantalla / 2 - ancho_texto_titulo / 2;
-        float posicion_texto_y = alto_pantalla / 2 + 30;
-        glRasterPos2f(posicion_texto_x, posicion_texto_y);
-        for (const char* c = texto_titulo; *c; ++c) {
-            glutBitmapCharacter(GLUT_BITMAP_9_BY_15, *c);
-        }
-
-        // Dibujar la instrucción "PULSA ESPACIO PARA JUGAR"
-        glColor3f(0.8f, 0.6f, 0.0f); // Amarillo más apagado
-        const char* texto_instruccion = "PULSA ESPACIO PARA JUGAR";
-        int ancho_texto_instruccion = 0;
-        for (const char* c = texto_instruccion; *c; ++c) {
-            ancho_texto_instruccion += glutBitmapWidth(GLUT_BITMAP_8_BY_13, *c);
-        }
-        float posicion_instruccion_x = ancho_pantalla / 2 - ancho_texto_instruccion / 2;
-        float posicion_instruccion_y = alto_pantalla / 2 - 30;
-        glRasterPos2f(posicion_instruccion_x, posicion_instruccion_y);
-        for (const char* c = texto_instruccion; *c; ++c) {
-            glutBitmapCharacter(GLUT_BITMAP_8_BY_13, *c);
-        }
-
-        // Restaurar matrices de la pantalla de inicio
-        glPopMatrix();
+        // Texto instrucción
+        glColor3f(0.8f, 1.6f, 0.4f);
+		const char* texto_instruccion = "PULSA ESPACIO PARA JUGAR";
+		int ancho_texto_instr = 0;
+		for (const char* c = texto_instruccion; *c; ++c)
+		    ancho_texto_instr += glutBitmapWidth(GLUT_BITMAP_HELVETICA_18, *c); // Fuente grande
+		float pos_x_instr = ancho_pantalla / 2 - ancho_texto_instr / 2;
+		float pos_y_instr = 30;  // ? Casi en el borde inferior
+		glRasterPos2f(pos_x_instr, pos_y_instr);
+		for (const char* c = texto_instruccion; *c; ++c)
+		    glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+		    
+        glPopMatrix(); 
         glMatrixMode(GL_PROJECTION);
         glPopMatrix();
         glMatrixMode(GL_MODELVIEW);
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        glLoadIdentity();
+        gluOrtho2D(-1.0, 1.0, -1.0, 1.0); 
 
-    } else {
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        glLoadIdentity();
+
+        letraD();
+        letraO();
+        letraO_2();
+        letraM();
+        BordeDOO();
+
+        glPushMatrix();
+            glTranslatef(-0.29f, 0.0f, 0.0f);
+            glRotatef(-4.0f, 0.0f, 0.0f, 1.0f);
+            glRotatef(180.0f, 0.0f, 1.0f, 0.0f);
+            glTranslatef(0.57f, 0.0f, 0.0f);
+            BordeDOO();
+        glPopMatrix();
+
+        glPushMatrix();
+            glTranslatef(0.73f, 0.0f, 0.0f);
+            BordeDOO();
+        glPopMatrix();
+
+        BordeD_RED();
+        BordeM();
+        BordeDOOM();         // ? ahora sí se verá
+        BordeO_RED();
+        BordeOO_RED();
+        BordeM_RED();
+        MotosierraBorde();
+
+        glPopMatrix(); // restaurar modelo
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix(); // restaurar proyección
+        glMatrixMode(GL_MODELVIEW);
+    }else {
         // --- ESCENA DEL JUEGO: LABERINTO DOOM ---
         glEnable(GL_DEPTH_TEST); // Volver a habilitar la prueba de profundidad para la escena 3D
         glMatrixMode(GL_PROJECTION);
@@ -691,29 +1469,9 @@ void dibujarEscena() {
 		    for (int i = 0; i < NUM_ENEMIGOS; ++i) {
 		    dibujarCubo(posicion_enemigo[i][0], 1.0f + rebote_enemigo, posicion_enemigo[i][1], 2.0f, 2.0f, 2.0f);
 		}
-
-
-        // --- DIBUJAR EL ARMA CERCA DE LA CÁMARA ---
-        glPushMatrix();
-            glTranslatef(posicion_camara_x + direccion_camara_x * 0.5f, posicion_camara_y + altura_salto - 0.3f + direccion_camara_y * 0.5f, posicion_camara_z + direccion_camara_z * 0.5f);
-            glRotatef(angulo_pitch, 1.0f, 0.0f, 0.0f);
-            glRotatef(angulo_yaw + 90.0f, 0.0f, 1.0f, 0.0f);
-
-            glEnable(GL_TEXTURE_2D);
-            if (esta_animando_disparo && !pistola_animacion_texturas.empty()) {
-                glBindTexture(GL_TEXTURE_2D, pistola_animacion_texturas[pistola_animacion_cuadro_actual % pistola_animacion_texturas.size()]);
-            } else {
-                glBindTexture(GL_TEXTURE_2D, texturaID_pistola);
-            }
-            glColor3f(1.0f, 1.0f, 1.0f);
-            glBegin(GL_QUADS);
-                glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.2f, -0.1f, 0.0f);
-                glTexCoord2f(1.0f, 0.0f); glVertex3f(0.2f, -0.1f, 0.0f);
-                glTexCoord2f(1.0f, 1.0f); glVertex3f(0.2f, 0.1f, 0.0f);
-                glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.2f, 0.1f, 0.0f);
-            glEnd();
-            glDisable(GL_TEXTURE_2D);
-        glPopMatrix();
+		
+		// --- DIBUJAR EL ARMA CERCA DE LA CÁMARA ---
+      	dibujarArmaAnimada();
 
         // Restaurar matrices de la escena del juego
         glPopMatrix();
@@ -722,19 +1480,30 @@ void dibujarEscena() {
         glMatrixMode(GL_MODELVIEW);
 
         // Llamada al HUD en la escena del juego
+        glDisable(GL_LIGHTING);        // Desactiva la iluminación global
         glDisable(GL_DEPTH_TEST);
         dibujarHUD();
+		crearMenu();
 
         // Dibujar el minimapa
     	dibujarMinimapa(grosor_pared, altura_pared); // Pasa los valores aquí
 
         glEnable(GL_DEPTH_TEST);
+        glDisable(GL_LIGHT0);          
     }
 
     glutSwapBuffers();
 }
 
+// Variable global para el último tiempo de actualización
+float ultimoTiempo = 0.0f;
+
 void actualizar(int value) {
+    // Calcula deltaTime
+    float tiempoActual = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // segundos
+    float deltaTime = tiempoActual - ultimoTiempo;
+    ultimoTiempo = tiempoActual;
+
     if (juego_terminado) return;
 
     rebote_enemigo += direccion_rebote * 0.01f;
@@ -758,64 +1527,106 @@ void actualizar(int value) {
         }
     }
 
+    // --- ¡Actualiza la animación del arma aquí! ---
+    actualizarAnimacionArma(deltaTime);
+
     glutPostRedisplay();
-    glutTimerFunc(16, actualizar, 0);
+    glutTimerFunc(20, actualizar, 0);
 }
 
-void manejarTeclas(unsigned char key, int x, int y) {
-    if (!juego_iniciado) {
-        if (key == ' ') {
-            juego_iniciado = true;
-            resetearPosicionJugador();
-            vidas = 3;
-            juego_terminado = false;
-        }
-        return; // No procesar otras teclas si el juego no ha comenzado
-    }
 
-    if (juego_terminado) return;
-    float velocidad_movimiento = 1.03f;
-
-    float derechaX = -direccion_camara_z;
-    float derechaZ = direccion_camara_x;
-
-    switch (key) {
-        case 'w':
-            posicion_camara_x += direccion_camara_x * velocidad_movimiento;
-            posicion_camara_z += direccion_camara_z * velocidad_movimiento;
-            break;
-        case 's':
-            posicion_camara_x -= direccion_camara_x * velocidad_movimiento;
-            posicion_camara_z -= direccion_camara_z * velocidad_movimiento;
-            break;
-        case 'a':
-            posicion_camara_x -= derechaX * velocidad_movimiento;
-            posicion_camara_z -= derechaZ * velocidad_movimiento;
-            break;
-        case 'd':
-            posicion_camara_x += derechaX * velocidad_movimiento;
-            posicion_camara_z += derechaZ * velocidad_movimiento;
-            break;
-        case ' ': if (!esta_saltando) {
-            esta_saltando = true;
-            velocidad_salto = VELOCIDAD_SALTO_INICIAL;
-        } break;
-        case 'f': // Tecla para disparar
-            float distancia_impacto;
-            for (int i = 0; i < 3; ++i) {
-                CajaColision caja_enemigo = obtenerCajaColisionEnemigo(i);
-                if (rayoIntersectaCaja(posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
-                                     direccion_camara_x, direccion_camara_y, direccion_camara_z,
-                                     caja_enemigo, distancia_impacto)) {
-                    std::cout << "¡Impacto en el enemigo " << i << " a distancia " << distancia_impacto << "!" << std::endl;
-                    break;
-                }
-            }
-            break;
-        case 27:
-            exit(0);
-    }
-}
+void manejarTeclas(unsigned char key, int x, int y) 
+	{
+	    if (key == 'm' || key == 'M') {
+	        mostrarMenu = !mostrarMenu;
+	        glutPostRedisplay();
+	        return;
+	    }
+	
+	    if (mostrarMenu) 
+		{
+	        switch (key) {
+	            case '1':
+	                modoVisual = 0; // Día
+	                break;
+	            case '2':
+	                modoVisual = 1; // Noche
+	                break;
+	            case '3':
+	                sonidoActivo = 1;
+	                break;
+	            case '4':
+	                sonidoActivo = 0;
+	                break;
+	            case '5':
+	                exit(0);
+	                break;
+	        }
+	        glutPostRedisplay();
+	        return; 
+	    }
+	    
+	    if (!juego_iniciado) {
+	        if (key == ' ') {
+	            juego_iniciado = true;
+	            resetearPosicionJugador();
+	            vidas = 3;
+	            juego_terminado = false;
+	        }
+	        return; // No procesar otras teclas si el juego no ha comenzado
+	    }
+	
+	    if (juego_terminado) return;
+	    float velocidad_movimiento = 0.8f;
+	
+	    float derechaX = -direccion_camara_z;
+	    float derechaZ = direccion_camara_x;
+	
+			// Calcula el YAW en radianes
+		float radianes_yaw = angulo_yaw * M_PI / 180.0f;
+		float frente_x = cos(radianes_yaw);
+		float frente_z = sin(radianes_yaw);
+	
+	    switch (key) {
+	        case 'w':
+		        posicion_camara_x += frente_x * velocidad_movimiento;
+		        posicion_camara_z += frente_z * velocidad_movimiento;
+		        break;
+		    case 's':
+		        posicion_camara_x -= frente_x * velocidad_movimiento;
+		        posicion_camara_z -= frente_z * velocidad_movimiento;
+		        break;
+		    case 'a':
+		        posicion_camara_x -= derechaX * velocidad_movimiento;
+		        posicion_camara_z -= derechaZ * velocidad_movimiento;
+		        break;
+		    case 'd':
+		        posicion_camara_x += derechaX * velocidad_movimiento;
+		        posicion_camara_z += derechaZ * velocidad_movimiento;
+		        break;
+	        case ' ': if (!esta_saltando) {
+	            esta_saltando = true;
+	            velocidad_salto = VELOCIDAD_SALTO_INICIAL;
+	        } break;
+			case 'f': // Tecla para disparar
+			    esta_animando_disparo = true;
+			    arma_frame_actual = 0; // reinicia animación
+			    arma_tiempo = 0.0f;
+			    float distancia_impacto;
+			    for (int i = 0; i < 3; ++i) {
+			        CajaColision caja_enemigo = obtenerCajaColisionEnemigo(i);
+			        if (rayoIntersectaCaja(posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
+			                               direccion_camara_x, direccion_camara_y, direccion_camara_z,
+			                               caja_enemigo, distancia_impacto)) {
+			            std::cout << "¡Impacto en el enemigo " << i << " a distancia " << distancia_impacto << "!" << std::endl;
+			            break;
+			        }
+			    }
+			    break;
+	        case 27:
+	            exit(0);
+	    }
+	}
 
 void inicializarRenderizado() {
 
@@ -838,29 +1649,63 @@ void redimensionar(int w, int h) {
     centro_Y = alto_pantalla / 2;
 }
 
+
+
+void display(void) {
+    if (modoVisual == 0) {  // Día
+        glColor3f(0.0, 0.0, 0.0); 
+    } else {  // Noche
+        glColor3f(1.0, 1.0, 1.0); 
+    }
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    if (modoVisual == 0)
+        dibujarTexto(-0.5f, 0.3f, "Modo: DIA");
+    else
+        dibujarTexto(-0.5f, 0.3f, "Modo: NOCHE");
+
+    if (sonidoActivo)
+        dibujarTexto(-0.5f, 0.1f, "Sonido: ACTIVADO");
+    else
+        dibujarTexto(-0.5f, 0.1f, "Sonido: DESACTIVADO");
+
+    glutSwapBuffers();
+}
+
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
 
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(ancho_pantalla, alto_pantalla);
     glutCreateWindow("Prototipo de Juego FPS DOOM");
+    glutMouseFunc(manejarClickMouse); 
 
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_COLOR_MATERIAL); // Para que el color del material se mezcle con la luz
+    glShadeModel(GL_SMOOTH);
 
     inicializarRenderizado();
-    texturaID_suelo = cargarTextura("neutral.tga"); // Cargar la textura del suelo
-	texturaID_cara_doomguy = cargarTextura("rostro_doomguy.tga"); // Cargar la textura del doomguy
 
+    texturaID_suelo = cargarTextura("neutral.tga");
+    texturaHUD = cargarTextura("hud.tga");
+    texturaID_cara_doomguy = cargarTextura("rostro_doomguy.tga");
+    
+   // Calcula deltaTime como ya lo haces
+    cargarFramesArma();
 
+   
+    glutPostRedisplay();
     glutDisplayFunc(dibujarEscena);
+
     glutKeyboardFunc(manejarTeclas);
     glutPassiveMotionFunc(movimientoMouse);
-    glutTimerFunc(16, actualizar, 0);
+    glutTimerFunc(20, actualizar, 0);
     glutReshapeFunc(redimensionar);
-    glutPassiveMotionFunc(movimientoMouse); // Registrar movimiento del mouse
-    glutSetCursor(GLUT_CURSOR_NONE); // Ocultar el cursor
+    
+    glutSetCursor(GLUT_CURSOR_NONE);
+    crearMenu();
 
     glutMainLoop();
-
     return 0;
-}    
+}
