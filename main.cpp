@@ -9,6 +9,7 @@
 #ifdef _WIN32
 
 #include <windows.h>
+
 #include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
 #else
@@ -20,7 +21,7 @@
 #include "stb_image.h"
 #include <string>
 
-// ==== CONSTANTES ====
+// ==== CONSTANTES ===
 const float VELOCIDAD_MOVIMIENTO = 0.14f;
 const float VELOCIDAD_SALTO_INICIAL = 0.07f;
 const float GRAVEDAD = 0.01f;
@@ -50,7 +51,7 @@ int vidas = 3;
 bool juego_terminado = false;
 bool juego_iniciado = false; // Nuevo estado para la pantalla de inicio
 
-//============MENU
+//============MENU 1
 int modoVisual = 0;      // ELECCION DIA
 int sonidoActivo = 0;    // ELECCION SONIDO
 
@@ -66,6 +67,18 @@ float posicion_enemigo[NUM_ENEMIGOS][2] = {
 	{25.0f, 2.0f}, 
 	{55.0f, 2.0f} // Posición del enemigo 5
 };
+
+//============MENU 2
+typedef enum {
+    MODO_DIA,
+    MODO_NOCHE,
+    AUDIO_ON,
+    AUDIO_OFF,
+    SALIR,
+} opcionesMenu;
+
+
+
 //============arma
 
 bool esta_animando_disparo = false;
@@ -230,6 +243,8 @@ void cargarFramesCara() {
 }
 
 
+
+
 void actualizarAnimacionCara(float deltaTime) {
     cara_tiempo += deltaTime;
     if (cara_tiempo >= cara_duracion_frame) {
@@ -251,7 +266,6 @@ void dibujarTextoSombreado(float x, float y, const char* texto, void* fuente, fl
     glRasterPos2f(x, y);
     for(const char* c=texto; *c; c++) glutBitmapCharacter(fuente, *c);
 }
-
 
 void dibujarArmaAnimada() {
     // --- Cambiar a proyección ortográfica 2D ---
@@ -334,7 +348,7 @@ CajaColision obtenerCajaColisionEnemigo(int indice_enemigo) {
     return caja;
 }
 
-// Función para verificar si un rayo intersecta con una caja de colisión
+// Función para verificar si un rayo intersecta con una caja de colisiddadsasón
 bool rayoIntersectaCaja(float origenX, float origenY, float origenZ,
                         float direccionX, float direccionY, float direccionZ,
                         const CajaColision& caja, float& t) {
@@ -779,6 +793,8 @@ void dibujarTexto(float x, float y, const std::string& texto) {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, texto[i]);
     }
 }
+
+
 void onMenu(unsigned char tecla, int x, int y) {
 switch (tecla) {
         case 'm': // Mostrar/Ocultar menú
@@ -803,6 +819,7 @@ switch (tecla) {
     }
     glutPostRedisplay();
 }
+
 void crearMenu() {
     if (!mostrarMenu) return;
 
@@ -846,6 +863,52 @@ void crearMenu() {
     glMatrixMode(GL_MODELVIEW);
     glPopMatrix();
 }
+
+void onMenu_2(int opcion) {
+    switch (opcion) {
+        case MODO_DIA:
+            modoVisual = 0;
+            break;
+        case MODO_NOCHE:
+            modoVisual = 1;
+            break;
+        case AUDIO_ON:
+   			reproducirMusica("soundtrack.mp3");
+            break;
+        case AUDIO_OFF:
+            detenerMusica();
+            break;
+        case SALIR:
+            exit(0);
+            break;
+        default:
+            break;
+    }
+    glutPostRedisplay();
+}
+
+void crearMenu_2(void) {
+    int menuOpciones, menuAudio, menuPrincipal;
+
+    // Submenús
+    menuOpciones = glutCreateMenu(onMenu_2);
+    glutAddMenuEntry("DIA", MODO_DIA);
+    glutAddMenuEntry("NOCHE", MODO_NOCHE);
+    
+    menuAudio = glutCreateMenu(onMenu_2);
+    glutAddMenuEntry("ACTIVAR SONIDO", AUDIO_ON);
+    glutAddMenuEntry("DESACTIVAR SONIDO", AUDIO_OFF);
+
+    // Menú principal
+    menuPrincipal = glutCreateMenu(onMenu_2);
+    glutAddSubMenu("Opciones", menuOpciones);
+    glutAddSubMenu("Audio", menuAudio);
+    glutAddMenuEntry("Salir", SALIR);
+
+    // Asociar menú al botón derecho del mouse
+    glutAttachMenu(GLUT_RIGHT_BUTTON);
+}
+
 
 void BordeDOOM(){
 	glColor3f(0.0f,0.0f,0.0f);
@@ -1908,7 +1971,8 @@ int main(int argc, char** argv) {
     
     glutSetCursor(GLUT_CURSOR_NONE);
     crearMenu();
-
+	crearMenu_2();
+	
     glutMainLoop();
     return 0;
 }
