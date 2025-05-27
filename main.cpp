@@ -7,7 +7,10 @@
 #include <stdio.h>
 #include <string.h>
 #ifdef _WIN32
+
 #include <windows.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 #else
 #include <sys/time.h>
 #endif
@@ -133,6 +136,17 @@ int arma_frame_actual = 0;
 float arma_tiempo = 0.0f;
 float arma_duracion_frame = 0.1f;
 
+void reproducirMusica(const char* archivo) {
+    char comando[40];
+    sprintf(comando, "open \"%s\" type mpegvideo alias miMusica", archivo);
+    mciSendString(comando, NULL, 0, NULL);
+    mciSendString("play miMusica repeat", NULL, 0, NULL); // repeat para bucle
+}
+
+void detenerMusica() {
+    mciSendString("stop miMusica", NULL, 0, NULL);
+    mciSendString("close miMusica", NULL, 0, NULL);
+}
 
 void cargarFramesPistola() {
     frames_pistola.push_back(cargarTextura("pistola_0.png"));
@@ -1692,10 +1706,10 @@ void manejarTeclas(unsigned char key, int x, int y)
 	                modoVisual = 1; // Noche
 	                break;
 	            case '3':
-	                sonidoActivo = 1;
+   					reproducirMusica("soundtrack.mp3");
 	                break;
 	            case '4':
-	                sonidoActivo = 0;
+  				  	detenerMusica();
 	                break;
 	            case '5':
 	                exit(0);
