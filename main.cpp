@@ -149,6 +149,7 @@ int arma_frame_actual = 0;
 float arma_tiempo = 0.0f;
 float arma_duracion_frame = 0.1f;
 
+// AJUSTES DE SONIDO
 void reproducirMusica(const char* archivo) {
     char comando[40];
     sprintf(comando, "open \"%s\" type mpegvideo alias miMusica", archivo);
@@ -161,6 +162,8 @@ void detenerMusica() {
     mciSendString("close miMusica", NULL, 0, NULL);
 }
 
+
+// FRAMES 
 void cargarFramesPistola() {
     frames_pistola.push_back(cargarTextura("pistola_0.png"));
     frames_pistola.push_back(cargarTextura("pistola_1.png"));
@@ -243,7 +246,7 @@ void cargarFramesCara() {
 }
 
 
-
+// ACTUALIZAR ANIMACIONES 
 
 void actualizarAnimacionCara(float deltaTime) {
     cara_tiempo += deltaTime;
@@ -327,13 +330,13 @@ void actualizarAnimacionArma(float deltaTime) {
 }
 
 
-
 // Estructura para representar la caja de colisión de un objeto (enemigo)
 struct CajaColision {
     float minX, maxX;
     float minY, maxY;
     float minZ, maxZ;
 };
+
 
 // Función para obtener la caja de colisión de un enemigo (ajusta según tu representación)
 CajaColision obtenerCajaColisionEnemigo(int indice_enemigo) {
@@ -383,8 +386,20 @@ bool rayoIntersectaCaja(float origenX, float origenY, float origenZ,
     return true;
 }
 
+void resetearPosicionJugador() {
+    // Ejemplo: pon el jugador al inicio del mapa
+    posicion_camara_x = 8.0f;
+    posicion_camara_y = 0.80f; // Altura de la cámara (jugador de pie)
+    posicion_camara_z = 0.0f;
 
+    // Opcional: resetear ángulos de cámara
+    angulo_yaw = 0.0f;
+    angulo_pitch = 0.0f;
 
+    // Opcional: resetear otras variables de movimiento o estado
+    esta_saltando = false;
+    altura_salto = 0.0f;
+}
 
 
 void reproducirSonidoArma(const char* archivo) {
@@ -398,8 +413,16 @@ void reproducirSonidoArma(const char* archivo) {
     mciSendString("play sonidoArma", NULL, 0, NULL);
 }
 
-
 void manejarClickMouse(int button, int state, int x, int y) {
+    // Permite iniciar el juego con click si aún no ha iniciado
+    if (!juego_iniciado && button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+        juego_iniciado = true;
+        resetearPosicionJugador();
+        vidas = 3;
+        juego_terminado = false;
+        return;
+    }
+
     // Solo actúa si el botón izquierdo es presionado, el juego está iniciado y no está terminado
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN && juego_iniciado && !juego_terminado) {
         // --- Animación del disparo, igual que en 'f' ---
@@ -430,6 +453,7 @@ void manejarClickMouse(int button, int state, int x, int y) {
         }
     }
 }
+
 
 // ==== UTILITARIAS ====
 void dibujarHUD(int municion) {
@@ -578,10 +602,6 @@ void movimientoMouse(int x, int y) {
     glutPostRedisplay();
 }
 
-void resetearPosicionJugador() {
-    posicion_camara_x = posicion_camara_z = 0.0f;
-    altura_salto = 0.0f;
-}
 
 bool verificarColision() {
     for (int i = 0; i < 3; ++i) {
@@ -787,13 +807,13 @@ void configurarIluminacion() {
 
     glLightfv(GL_LIGHT0, GL_POSITION, pos_luz);
 }
+
 void dibujarTexto(float x, float y, const std::string& texto) {
     glRasterPos2f(x, y);
     for (size_t i = 0; i < texto.length(); i++) {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, texto[i]);
     }
 }
-
 
 void onMenu(unsigned char tecla, int x, int y) {
 switch (tecla) {
@@ -909,6 +929,8 @@ void crearMenu_2(void) {
     glutAttachMenu(GLUT_RIGHT_BUTTON);
 }
 
+
+// DIBUJO 2D 
 
 void BordeDOOM(){
 	glColor3f(0.0f,0.0f,0.0f);
@@ -1484,6 +1506,8 @@ void MotosierraBorde(){
 	glEnd();
 }
 
+
+
 void dibujarEscena() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
@@ -1512,7 +1536,7 @@ void dibujarEscena() {
         glEnd();
         // Texto instrucción
         glColor3f(0.8f, 1.6f, 0.4f);
-		const char* texto_instruccion = "PULSA ESPACIO PARA JUGAR";
+		const char* texto_instruccion = "DALE CLIC PARA JUGAR";
 		int ancho_texto_instr = 0;
 		for (const char* c = texto_instruccion; *c; ++c)
 		    ancho_texto_instr += glutBitmapWidth(GLUT_BITMAP_HELVETICA_18, *c); // Fuente grande
@@ -1777,119 +1801,128 @@ void actualizar(int value) {
     glutTimerFunc(20, actualizar, 0);
 }
 
+bool tecla_w = false, tecla_a = false, tecla_s = false, tecla_d = false;
+
 
 void manejarTeclas(unsigned char key, int x, int y) 
-	{
-	    if (key == 'm' || key == 'M') {
-	        mostrarMenu = !mostrarMenu;
-	        glutPostRedisplay();
-	        return;
-	    }
-	
-	    if (mostrarMenu) 
-		{
-	        switch (key) {
-	            case '1':
-	                modoVisual = 0; // Día
-	                break;
-	            case '2':
-	                modoVisual = 1; // Noche
-	                break;
-	            case '3':
-   					reproducirMusica("soundtrack.mp3");
-	                break;
-	            case '4':
-  				  	detenerMusica();
-	                break;
-	            case '5':
-	                exit(0);
-	                break;
-	        }
-	        glutPostRedisplay();
-	        return; 
-	    }
-	    
-	    if (!juego_iniciado) {
-	        if (key == ' ') {
-	            juego_iniciado = true;
-	            resetearPosicionJugador();
-	            vidas = 3;
-	            juego_terminado = false;
-	        }
-	        return; // No procesar otras teclas si el juego no ha comenzado
-	    }
-	
-	    if (juego_terminado) return;
-	    
-		    if (key == '1') {
-			    arma_actual = PISTOLA;
-			    arma_frames_actual = &frames_pistola;
-			    arma_frame_actual = 0;
-			    return;
-			}
-			if (key == '2') {
-			    arma_actual = ESCOPETA;
-			    arma_frames_actual = &frames_escopeta;
-			    arma_frame_actual = 0;
-			    return;
-			}
-			if (key == '3') {
-			    arma_actual = REVOLVER;
-			    arma_frames_actual = &frames_revolver;
-			    arma_frame_actual = 0;
-			    return;
-			}
+{
+    // Mostrar/Ocultar menú con 'M' o 'm'
+    if (key == 'm' || key == 'M') {
+        mostrarMenu = !mostrarMenu;
+        glutPostRedisplay();
+        return;
+    }
 
-	    float velocidad_movimiento = 0.8f;
-	
-	    float derechaX = -direccion_camara_z;
-	    float derechaZ = direccion_camara_x;
-	
-			// Calcula el YAW en radianes
-		float radianes_yaw = angulo_yaw * M_PI / 180.0f;
-		float frente_x = cos(radianes_yaw);
-		float frente_z = sin(radianes_yaw);
-	
-	    switch (key) {
-	        case 'w':
-		        posicion_camara_x += frente_x * velocidad_movimiento;
-		        posicion_camara_z += frente_z * velocidad_movimiento;
-		        break;
-		    case 's':
-		        posicion_camara_x -= frente_x * velocidad_movimiento;
-		        posicion_camara_z -= frente_z * velocidad_movimiento;
-		        break;
-		    case 'a':
-		        posicion_camara_x -= derechaX * velocidad_movimiento;
-		        posicion_camara_z -= derechaZ * velocidad_movimiento;
-		        break;
-		    case 'd':
-		        posicion_camara_x += derechaX * velocidad_movimiento;
-		        posicion_camara_z += derechaZ * velocidad_movimiento;
-		        break;
-	        case ' ': if (!esta_saltando) {
-	            esta_saltando = true;
-	            velocidad_salto = VELOCIDAD_SALTO_INICIAL;
-	        } break;
-			case 'f': // Tecla para disparar
-			    esta_animando_disparo = true;
-			    arma_frame_actual = 0; // reinicia animación
-			    arma_tiempo = 0.0f;
-			    float distancia_impacto;
-			    for (int i = 0; i < 3; ++i) {
-			        CajaColision caja_enemigo = obtenerCajaColisionEnemigo(i);
-			        if (rayoIntersectaCaja(posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
-			                               direccion_camara_x, direccion_camara_y, direccion_camara_z,
-			                               caja_enemigo, distancia_impacto)) {
-			            std::cout << "¡Impacto en el enemigo " << i << " a distancia " << distancia_impacto << "!" << std::endl;
-			            break;
-			        }
-			    }
-			    break;
-	        case 27:
-	            exit(0);
-	    }
-	}
+    // --- Menú 2D activo: control de opciones ---
+    if (mostrarMenu) 
+    {
+        switch (key) {
+            case '1':
+                modoVisual = 0; // Día
+                break;
+            case '2':
+                modoVisual = 1; // Noche
+                break;
+            case '3':
+                reproducirMusica("soundtrack.mp3");
+                break;
+            case '4':
+                detenerMusica();
+                break;
+            case '5':
+            case 27: // ESC
+                exit(0);
+                break;
+        }
+        glutPostRedisplay();
+        return; 
+    }
+    
+    // --- Iniciar juego con ENTER o ESPACIO ---
+    if (!juego_iniciado) {
+        if (key == ' ' || key == 13) { // 13 es ENTER
+            juego_iniciado = true;
+            resetearPosicionJugador();
+            vidas = 3;
+            juego_terminado = false;
+        }
+        return; // No procesar otras teclas si el juego no ha comenzado
+    }
+
+    // --- Si el juego terminó, ignora teclas ---
+    if (juego_terminado) return;
+    
+    // --- Cambio de arma ---
+    if (key == '1') {
+        arma_actual = PISTOLA;
+        arma_frames_actual = &frames_pistola;
+        arma_frame_actual = 0;
+        return;
+    }
+    if (key == '2') {
+        arma_actual = ESCOPETA;
+        arma_frames_actual = &frames_escopeta;
+        arma_frame_actual = 0;
+        return;
+    }
+    if (key == '3') {
+        arma_actual = REVOLVER;
+        arma_frames_actual = &frames_revolver;
+        arma_frame_actual = 0;
+        return;
+    }
+
+    float velocidad_movimiento = 1.0f;
+    float derechaX = -direccion_camara_z;
+    float derechaZ = direccion_camara_x;
+    float radianes_yaw = angulo_yaw * M_PI / 180.0f;
+    float frente_x = cos(radianes_yaw);
+    float frente_z = sin(radianes_yaw);
+
+    switch (key) {
+        case 'w':
+            posicion_camara_x += frente_x * velocidad_movimiento;
+            posicion_camara_z += frente_z * velocidad_movimiento;
+            break;
+        case 's':
+            posicion_camara_x -= frente_x * velocidad_movimiento;
+            posicion_camara_z -= frente_z * velocidad_movimiento;
+            break;
+        case 'a':
+            posicion_camara_x -= derechaX * velocidad_movimiento;
+            posicion_camara_z -= derechaZ * velocidad_movimiento;
+            break;
+        case 'd':
+            posicion_camara_x += derechaX * velocidad_movimiento;
+            posicion_camara_z += derechaZ * velocidad_movimiento;
+            break;
+        case ' ':
+            if (!esta_saltando) {
+                esta_saltando = true;
+                velocidad_salto = VELOCIDAD_SALTO_INICIAL;
+            }
+            break;
+        case 'f': // Disparo
+            esta_animando_disparo = true;
+            arma_frame_actual = 0; // reinicia animación
+            arma_tiempo = 0.0f;
+            {
+                float distancia_impacto;
+                for (int i = 0; i < 3; ++i) {
+                    CajaColision caja_enemigo = obtenerCajaColisionEnemigo(i);
+                    if (rayoIntersectaCaja(posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
+                                           direccion_camara_x, direccion_camara_y, direccion_camara_z,
+                                           caja_enemigo, distancia_impacto)) {
+                        std::cout << "¡Impacto en el enemigo " << i << " a distancia " << distancia_impacto << "!" << std::endl;
+                        break;
+                    }
+                }
+            }
+            break;
+        case 27: // ESC
+            exit(0);
+    }
+}
 
 void inicializarRenderizado() {
 
@@ -1954,6 +1987,7 @@ int main(int argc, char** argv) {
     texturaHUD = cargarTextura("hud.tga");
     texturaID_cara_doomguy = cargarTextura("rostro_doomguy.tga");
     
+
    // Calcula deltaTime como ya lo haces
 	cargarFramesPistola();
 	cargarFramesEscopeta();
@@ -1966,6 +2000,7 @@ int main(int argc, char** argv) {
 
     glutKeyboardFunc(manejarTeclas);
     glutPassiveMotionFunc(movimientoMouse);
+    
     glutTimerFunc(20, actualizar, 0);
     glutReshapeFunc(redimensionar);
     
