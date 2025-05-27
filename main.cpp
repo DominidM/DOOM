@@ -312,6 +312,8 @@ void actualizarAnimacionArma(float deltaTime) {
     }
 }
 
+
+
 // Estructura para representar la caja de colisión de un objeto (enemigo)
 struct CajaColision {
     float minX, maxX;
@@ -368,6 +370,21 @@ bool rayoIntersectaCaja(float origenX, float origenY, float origenZ,
 }
 
 
+
+
+
+void reproducirSonidoArma(const char* archivo) {
+    // Cierra el sonido anterior, si lo hay
+    mciSendString("close sonidoArma", NULL, 0, NULL);
+    // Abre el nuevo archivo como alias "sonidoArma"
+    char comando[256];
+    sprintf(comando, "open \"%s\" type mpegvideo alias sonidoArma", archivo);
+    mciSendString(comando, NULL, 0, NULL);
+    // Reproduce solo una vez (sin repeat)
+    mciSendString("play sonidoArma", NULL, 0, NULL);
+}
+
+
 void manejarClickMouse(int button, int state, int x, int y) {
     // Solo actúa si el botón izquierdo es presionado, el juego está iniciado y no está terminado
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN && juego_iniciado && !juego_terminado) {
@@ -375,6 +392,16 @@ void manejarClickMouse(int button, int state, int x, int y) {
         esta_animando_disparo = true;
         arma_frame_actual = 0;
         arma_tiempo = 0.0f;
+
+        // --- Reproduce el sonido correspondiente al arma actual ---
+        if (arma_actual == PISTOLA) {
+            reproducirSonidoArma("pistola.mp3");
+        } else if (arma_actual == ESCOPETA) {
+            reproducirSonidoArma("escopeta.mp3");
+        } else if (arma_actual == REVOLVER) {
+            reproducirSonidoArma("revolver.mp3");
+        }
+        // Si tienes más armas, agrégalas aquí
 
         // --- Chequea si impacta un enemigo ---
         float distancia_impacto;
