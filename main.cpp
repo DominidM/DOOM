@@ -119,49 +119,79 @@ GLuint cargarTextura(const char* ruta) {
     return id_textura;
 }
 
+enum TipoArma { PISTOLA = 0, ESCOPETA = 1, REVOLVER = 2 };
+int arma_actual = PISTOLA;
 
-std::vector<GLuint> arma_frames;
+std::vector<GLuint> frames_pistola;
+std::vector<GLuint> frames_escopeta;
+std::vector<GLuint> frames_revolver;
+
+std::vector<GLuint> frames_cara;
+int cara_frame_actual = 0;
+float cara_tiempo = 0.0f;
+float cara_duracion_frame = 0.12f; // Velocidad de animación, ajusta a gusto
+
+// Para el render y la animación del arma actual:
+std::vector<GLuint>* arma_frames_actual = &frames_pistola;
 int arma_frame_actual = 0;
 float arma_tiempo = 0.0f;
 float arma_duracion_frame = 0.1f;
 
-void cargarFramesArma() {
-    arma_frames.push_back(cargarTextura("pistola_0.png"));
-    arma_frames.push_back(cargarTextura("pistola_1.png"));
-    arma_frames.push_back(cargarTextura("pistola_2.png"));
-    arma_frames.push_back(cargarTextura("pistola_3.png"));
+
+void cargarFramesPistola() {
+    frames_pistola.push_back(cargarTextura("pistola_0.png"));
+    frames_pistola.push_back(cargarTextura("pistola_1.png"));
+    frames_pistola.push_back(cargarTextura("pistola_2.png"));
+    frames_pistola.push_back(cargarTextura("pistola_3.png"));
 }
 
 void cargarFramesEscopeta() {
-    arma_frames.push_back(cargarTextura("escopeta_0.png"));
-    arma_frames.push_back(cargarTextura("escopeta_1.png"));
-    arma_frames.push_back(cargarTextura("escopeta_2.png"));
-    arma_frames.push_back(cargarTextura("escopeta_3.png"));
-    arma_frames.push_back(cargarTextura("escopeta_4.png"));
-    arma_frames.push_back(cargarTextura("escopeta_5.png"));
-    arma_frames.push_back(cargarTextura("escopeta_6.png"));
-    arma_frames.push_back(cargarTextura("escopeta_7.png"));
+    frames_escopeta.push_back(cargarTextura("escopeta_0.png"));
+    frames_escopeta.push_back(cargarTextura("escopeta_1.png"));
+    frames_escopeta.push_back(cargarTextura("escopeta_2.png"));
+    frames_escopeta.push_back(cargarTextura("escopeta_3.png"));
+    frames_escopeta.push_back(cargarTextura("escopeta_4.png"));
+    frames_escopeta.push_back(cargarTextura("escopeta_5.png"));
+    frames_escopeta.push_back(cargarTextura("escopeta_6.png"));
+    frames_escopeta.push_back(cargarTextura("escopeta_7.png"));
 }
 
 void cargarFramesRevolver() {
-    arma_frames.push_back(cargarTextura("revolver_0.png"));
-    arma_frames.push_back(cargarTextura("revolver_1.png"));
-    arma_frames.push_back(cargarTextura("revolver_2.png"));
-    arma_frames.push_back(cargarTextura("revolver_3.png"));
-    arma_frames.push_back(cargarTextura("revolver_4.png"));
-    arma_frames.push_back(cargarTextura("revolver_5.png"));
-    arma_frames.push_back(cargarTextura("revolver_6.png"));
+    frames_revolver.push_back(cargarTextura("revolver_0.png"));
+    frames_revolver.push_back(cargarTextura("revolver_1.png"));
+    frames_revolver.push_back(cargarTextura("revolver_2.png"));
+    frames_revolver.push_back(cargarTextura("revolver_3.png"));
+    frames_revolver.push_back(cargarTextura("revolver_4.png"));
+    frames_revolver.push_back(cargarTextura("revolver_5.png"));
+    frames_revolver.push_back(cargarTextura("revolver_6.png"));
 }
-
 
 void cargarFramesCara() {
-    arma_frames.push_back(cargarTextura("doomguy_0.png"));
-    arma_frames.push_back(cargarTextura("doomguy_1.png"));
-    arma_frames.push_back(cargarTextura("doomguy_2.png"));
-    arma_frames.push_back(cargarTextura("doomguy_3.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_1.png"));
+    frames_cara.push_back(cargarTextura("doomguy_2.png"));
+    frames_cara.push_back(cargarTextura("doomguy_3.png"));
+    frames_cara.push_back(cargarTextura("doomguy_4.png"));
+    frames_cara.push_back(cargarTextura("doomguy_5.png"));
+    frames_cara.push_back(cargarTextura("doomguy_6.png"));
+    frames_cara.push_back(cargarTextura("doomguy_7.png"));
+    frames_cara.push_back(cargarTextura("doomguy_8.png"));
+    frames_cara.push_back(cargarTextura("doomguy_9.png"));
+    frames_cara.push_back(cargarTextura("doomguy_10.png"));
+    frames_cara.push_back(cargarTextura("doomguy_11.png"));
 }
 
 
+void actualizarAnimacionCara(float deltaTime) {
+    cara_tiempo += deltaTime;
+    if (cara_tiempo >= cara_duracion_frame) {
+        cara_tiempo = 0.0f;
+        cara_frame_actual++;
+        if (cara_frame_actual >= frames_cara.size()) {
+            cara_frame_actual = 0; // Vuelve al primer frame
+        }
+    }
+}
 
 void dibujarArmaAnimada() {
     // --- Cambiar a proyección ortográfica 2D ---
@@ -180,22 +210,26 @@ void dibujarArmaAnimada() {
     float x = (ancho_pantalla - arma_ancho) / 2.0f;
     float y = 100; // parte inferior
             
-	glDisable(GL_LIGHTING);        // Desactiva la iluminación global
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_LIGHTING);        // Desactiva la iluminación global
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_TEXTURE_2D);
-    if (!arma_frames.empty()) {
-        glBindTexture(GL_TEXTURE_2D, arma_frames[arma_frame_actual]);
+
+    // ¡OJO! Usa el puntero correcto y verifica que no esté vacío
+    if (arma_frames_actual && !arma_frames_actual->empty()) {
+        GLuint textura = (*arma_frames_actual)[arma_frame_actual];
+        glBindTexture(GL_TEXTURE_2D, textura);
+
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glBegin(GL_QUADS);
+            glTexCoord2f(0.0f, 1.0f); glVertex2f(x, y);
+            glTexCoord2f(1.0f, 1.0f); glVertex2f(x + arma_ancho, y);
+            glTexCoord2f(1.0f, 0.0f); glVertex2f(x + arma_ancho, y + arma_alto);
+            glTexCoord2f(0.0f, 0.0f); glVertex2f(x, y + arma_alto);
+        glEnd();
     }
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glBegin(GL_QUADS);
-        glTexCoord2f(0.0f, 1.0f); glVertex2f(x, y);
-	    glTexCoord2f(1.0f, 1.0f); glVertex2f(x + arma_ancho, y);
-	    glTexCoord2f(1.0f, 0.0f); glVertex2f(x + arma_ancho, y + arma_alto);
-	    glTexCoord2f(0.0f, 0.0f); glVertex2f(x, y + arma_alto);
-    glEnd();
     glDisable(GL_TEXTURE_2D);
-	glDisable(GL_BLEND);
+    glDisable(GL_BLEND);
 
     // --- Restaurar matrices ---
     glPopMatrix();
@@ -210,7 +244,7 @@ void actualizarAnimacionArma(float deltaTime) {
         if (arma_tiempo >= arma_duracion_frame) {
             arma_tiempo = 0.0f;
             arma_frame_actual++;
-            if (arma_frame_actual >= arma_frames.size()) {
+            if (arma_frames_actual && arma_frame_actual >= arma_frames_actual->size()) {
                 arma_frame_actual = 0;        // Vuelve al frame 0 (reposo)
                 esta_animando_disparo = false; // Termina la animación
             }
@@ -623,15 +657,12 @@ void configurarIluminacion() {
 
     glLightfv(GL_LIGHT0, GL_POSITION, pos_luz);
 }
-
-
 void dibujarTexto(float x, float y, const std::string& texto) {
     glRasterPos2f(x, y);
     for (size_t i = 0; i < texto.length(); i++) {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, texto[i]);
     }
 }
-
 void onMenu(unsigned char tecla, int x, int y) {
 switch (tecla) {
         case 'm': // Mostrar/Ocultar menú
@@ -656,7 +687,6 @@ switch (tecla) {
     }
     glutPostRedisplay();
 }
-
 void crearMenu() {
     if (!mostrarMenu) return;
 
@@ -1606,6 +1636,26 @@ void manejarTeclas(unsigned char key, int x, int y)
 	    }
 	
 	    if (juego_terminado) return;
+	    
+		    if (key == '1') {
+			    arma_actual = PISTOLA;
+			    arma_frames_actual = &frames_pistola;
+			    arma_frame_actual = 0;
+			    return;
+			}
+			if (key == '2') {
+			    arma_actual = ESCOPETA;
+			    arma_frames_actual = &frames_escopeta;
+			    arma_frame_actual = 0;
+			    return;
+			}
+			if (key == '3') {
+			    arma_actual = REVOLVER;
+			    arma_frames_actual = &frames_revolver;
+			    arma_frame_actual = 0;
+			    return;
+			}
+
 	    float velocidad_movimiento = 0.8f;
 	
 	    float derechaX = -direccion_camara_z;
@@ -1721,8 +1771,9 @@ int main(int argc, char** argv) {
     texturaID_cara_doomguy = cargarTextura("rostro_doomguy.tga");
     
    // Calcula deltaTime como ya lo haces
-    cargarFramesArma();
-
+	cargarFramesPistola();
+	cargarFramesEscopeta();
+	cargarFramesRevolver();
    
     glutPostRedisplay();
     glutDisplayFunc(dibujarEscena);
