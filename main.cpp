@@ -6,7 +6,6 @@
 #include <iostream>
 #include <stdio.h>
 #include <string.h>
-
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -14,12 +13,9 @@
 #endif
 
 #define M_PI 3.14159265358979323846
-
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #include <string>
-
-
 
 // ==== CONSTANTES ====
 const float VELOCIDAD_MOVIMIENTO = 0.14f;
@@ -46,7 +42,7 @@ float direccion_camara_x = 0.0f, direccion_camara_y = 0.0f, direccion_camara_z =
 float posicion_camara_x = 0.0f, posicion_camara_y = 1.0f, posicion_camara_z = 0.0f;
 float altura_salto = 0.10f, velocidad_salto = 0.10f;
 bool esta_saltando = false;
-
+int municion = 50; // Valor inicial, cámbialo según tu juego
 int vidas = 3;
 bool juego_terminado = false;
 bool juego_iniciado = false; // Nuevo estado para la pantalla de inicio
@@ -141,6 +137,7 @@ float arma_duracion_frame = 0.1f;
 void cargarFramesPistola() {
     frames_pistola.push_back(cargarTextura("pistola_0.png"));
     frames_pistola.push_back(cargarTextura("pistola_1.png"));
+    frames_pistola.push_back(cargarTextura("pistola_1.png"));
     frames_pistola.push_back(cargarTextura("pistola_2.png"));
     frames_pistola.push_back(cargarTextura("pistola_3.png"));
 }
@@ -153,6 +150,7 @@ void cargarFramesEscopeta() {
     frames_escopeta.push_back(cargarTextura("escopeta_4.png"));
     frames_escopeta.push_back(cargarTextura("escopeta_5.png"));
     frames_escopeta.push_back(cargarTextura("escopeta_6.png"));
+    frames_escopeta.push_back(cargarTextura("escopeta_7.png"));
     frames_escopeta.push_back(cargarTextura("escopeta_7.png"));
 }
 
@@ -167,18 +165,54 @@ void cargarFramesRevolver() {
 }
 
 void cargarFramesCara() {
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));  // 0 abierto
+    frames_cara.push_back(cargarTextura("doomguy_1.png"));  // 1 cerrado
+    frames_cara.push_back(cargarTextura("doomguy_1.png"));  // 2 izquierda
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));  // 3 derecha
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
     frames_cara.push_back(cargarTextura("doomguy_0.png"));
     frames_cara.push_back(cargarTextura("doomguy_1.png"));
+    frames_cara.push_back(cargarTextura("doomguy_1.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_2.png"));  
     frames_cara.push_back(cargarTextura("doomguy_2.png"));
+    frames_cara.push_back(cargarTextura("doomguy_2.png"));
+    frames_cara.push_back(cargarTextura("doomguy_2.png"));
+    frames_cara.push_back(cargarTextura("doomguy_2.png"));
+    frames_cara.push_back(cargarTextura("doomguy_2.png"));
+    frames_cara.push_back(cargarTextura("doomguy_2.png"));
+    frames_cara.push_back(cargarTextura("doomguy_2.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_1.png"));
+    frames_cara.push_back(cargarTextura("doomguy_1.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
+    frames_cara.push_back(cargarTextura("doomguy_0.png"));
     frames_cara.push_back(cargarTextura("doomguy_3.png"));
-    frames_cara.push_back(cargarTextura("doomguy_4.png"));
-    frames_cara.push_back(cargarTextura("doomguy_5.png"));
-    frames_cara.push_back(cargarTextura("doomguy_6.png"));
-    frames_cara.push_back(cargarTextura("doomguy_7.png"));
-    frames_cara.push_back(cargarTextura("doomguy_8.png"));
-    frames_cara.push_back(cargarTextura("doomguy_9.png"));
-    frames_cara.push_back(cargarTextura("doomguy_10.png"));
-    frames_cara.push_back(cargarTextura("doomguy_11.png"));
+    frames_cara.push_back(cargarTextura("doomguy_3.png"));
+    frames_cara.push_back(cargarTextura("doomguy_3.png"));
+    frames_cara.push_back(cargarTextura("doomguy_3.png"));
+    frames_cara.push_back(cargarTextura("doomguy_3.png"));
+    frames_cara.push_back(cargarTextura("doomguy_3.png"));
+    frames_cara.push_back(cargarTextura("doomguy_3.png"));
+    frames_cara.push_back(cargarTextura("doomguy_3.png"));
 }
 
 
@@ -192,6 +226,18 @@ void actualizarAnimacionCara(float deltaTime) {
         }
     }
 }
+
+void dibujarTextoSombreado(float x, float y, const char* texto, void* fuente, float r, float g, float b) {
+    // Sombra
+    glColor3f(0,0,0); 
+    glRasterPos2f(x+2, y-2);
+    for(const char* c=texto; *c; c++) glutBitmapCharacter(fuente, *c);
+    // Texto principal
+    glColor3f(r,g,b);
+    glRasterPos2f(x, y);
+    for(const char* c=texto; *c; c++) glutBitmapCharacter(fuente, *c);
+}
+
 
 void dibujarArmaAnimada() {
     // --- Cambiar a proyección ortográfica 2D ---
@@ -308,7 +354,6 @@ bool rayoIntersectaCaja(float origenX, float origenY, float origenZ,
 }
 
 
-
 void manejarClickMouse(int button, int state, int x, int y) {
     // Solo actúa si el botón izquierdo es presionado, el juego está iniciado y no está terminado
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN && juego_iniciado && !juego_terminado) {
@@ -332,7 +377,8 @@ void manejarClickMouse(int button, int state, int x, int y) {
 }
 
 // ==== UTILITARIAS ====
-void dibujarHUD() {
+void dibujarHUD(int municion) {
+
     // Cambiar a modo 2D
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
@@ -342,66 +388,99 @@ void dibujarHUD() {
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
     glLoadIdentity();
-	
-    // Dibujar barra inferior del HUD
+
+    // --- Barra inferior estilo DOOM ---
+    // Fondo metálico oscuro
+    glDisable(GL_TEXTURE_2D);
+    glBegin(GL_QUADS);
+        glColor3f(0.12f, 0.12f, 0.13f); // gris oscuro
+        glVertex2f(0, 0);
+        glVertex2f(ancho_pantalla, 0);
+        glColor3f(0.18f, 0.18f, 0.22f); // gris menos oscuro arriba
+        glVertex2f(ancho_pantalla, 100);
+        glVertex2f(0, 100);
+    glEnd();
+
+    // Borde superior brillante
+    glBegin(GL_QUADS);
+        glColor3f(0.7f, 0.7f, 0.82f);
+        glVertex2f(0, 97);
+        glVertex2f(ancho_pantalla, 97);
+        glColor3f(0.3f, 0.3f, 0.42f);
+        glVertex2f(ancho_pantalla, 100);
+        glVertex2f(0, 100);
+    glEnd();
+
+    // --- Textura decorativa del HUD (si tienes textura) ---
     glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, texturaHUD);
-	glColor3f(1, 1, 1);  // Color blanco para no alterar el color de la textura
-	
-	glBegin(GL_QUADS);
-	    glTexCoord2f(0, 0); glVertex2f(0, 0);                          // Inferior izquierda
-	    glTexCoord2f(1, 0); glVertex2f(ancho_pantalla, 0);             // Inferior derecha
-	    glTexCoord2f(1, 1); glVertex2f(ancho_pantalla, 100);           // Superior derecha
-	    glTexCoord2f(0, 1); glVertex2f(0, 100);                        // Superior izquierda
-	glEnd();
+    glBindTexture(GL_TEXTURE_2D, texturaHUD);
+    glColor3f(1,1,1);
+    glBegin(GL_QUADS);
+        glTexCoord2f(0, 0); glVertex2f(0, 0);
+        glTexCoord2f(1, 0); glVertex2f(ancho_pantalla, 0);
+        glTexCoord2f(1, 1); glVertex2f(ancho_pantalla, 100);
+        glTexCoord2f(0, 1); glVertex2f(0, 100);
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
 
-	glDisable(GL_TEXTURE_2D);
+    // --- Separadores metálicos laterales ---
+    glBegin(GL_QUADS);
+        glColor3f(0.5f, 0.5f, 0.6f);
+        glVertex2f(128, 0); glVertex2f(134, 0);
+        glVertex2f(134, 100); glVertex2f(128, 100);
+        glVertex2f(ancho_pantalla-128, 0); glVertex2f(ancho_pantalla-134, 0);
+        glVertex2f(ancho_pantalla-134, 100); glVertex2f(ancho_pantalla-128, 100);
+    glEnd();
 
-       // Texto de vidas (más grande)
-    char buffer[50];
-    sprintf(buffer, "Vidas: %d", vidas);
-    glColor3f(1.0f, 0.0f, 0.0f); // Rojo
-    glRasterPos2f(30, 75); // Ajusté la posición vertical
-    for (char* c = buffer; *c != '\0'; c++) {
-        glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c); // Fuente más grande (alternativa)
-    }
-
-    // --- CENTRO INFERIOR DEL HUD (Cara de Doomguy - Ajustada) ---
-    glColor3f(1.0f, 1.0f, 1.0f); // Establecer color blanco para la textura
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, texturaID_cara_doomguy);
-
+    // --- Recuadro para la cara del Doomguy ---
     float ancho_cara = 120;
     float alto_cara = 90;
     float posicion_cara_x = ancho_pantalla / 2 - ancho_cara / 2;
-    float posicion_cara_y = 5; // Ajusté la posición vertical
+    float posicion_cara_y = 5;
 
-    float sprite_ancho_atlas = 1.0f / 8.0f; // Ancho de cada sprite en el atlas
-    float sprite_alto_atlas = 0.8f / 5.35f;  // Alto de cada sprite en el atlas
-    float zoom_factor_u = 0.910f; // Factor de "zoom" horizontal (mayor valor = más zoom)
-    float zoom_factor_v = 1.05f; // Factor de "zoom" vertical
-    float centro_u = 0.0f;      // Desplazamiento horizontal para centrar (0 para la primera cara)
-    float centro_v = 0.0f;      // Desplazamiento vertical para centrar (0 para la fila superior)
-
-   glBegin(GL_QUADS);
-        glTexCoord2f(centro_u, centro_v + sprite_alto_atlas * zoom_factor_v); glVertex2f(posicion_cara_x, posicion_cara_y);             // Esquina inferior izquierda (V invertida)
-        glTexCoord2f(centro_u + sprite_ancho_atlas * zoom_factor_u, centro_v + sprite_alto_atlas * zoom_factor_v); glVertex2f(posicion_cara_x + ancho_cara, posicion_cara_y); // Esquina inferior derecha (V invertida)
-        glTexCoord2f(centro_u + sprite_ancho_atlas * zoom_factor_u, centro_v); glVertex2f(posicion_cara_x + ancho_cara, posicion_cara_y + alto_cara);  // Esquina superior derecha (V invertida)
-        glTexCoord2f(centro_u, centro_v); glVertex2f(posicion_cara_x, posicion_cara_y + alto_cara);              // Esquina superior izquierda (V invertida)
+    // Borde recuadro (gris oscuro/borde metálico)
+    glColor3f(0.4f, 0.4f, 0.48f);
+    glBegin(GL_LINE_LOOP);
+        glVertex2f(posicion_cara_x-4, posicion_cara_y-4);
+        glVertex2f(posicion_cara_x+ancho_cara+4, posicion_cara_y-4);
+        glVertex2f(posicion_cara_x+ancho_cara+4, posicion_cara_y+alto_cara+4);
+        glVertex2f(posicion_cara_x-4, posicion_cara_y+alto_cara+4);
     glEnd();
 
+    // --- Cara animada (Doomguy) ---
+    glEnable(GL_TEXTURE_2D);
+    glColor3f(1,1,1);
+    glBindTexture(GL_TEXTURE_2D, frames_cara[cara_frame_actual]);
+    glBegin(GL_QUADS);
+        glTexCoord2f(0, 1); glVertex2f(posicion_cara_x, posicion_cara_y);                    // Inferior izquierda
+        glTexCoord2f(1, 1); glVertex2f(posicion_cara_x + ancho_cara, posicion_cara_y);       // Inferior derecha
+        glTexCoord2f(1, 0); glVertex2f(posicion_cara_x + ancho_cara, posicion_cara_y + alto_cara); // Superior derecha
+        glTexCoord2f(0, 0); glVertex2f(posicion_cara_x, posicion_cara_y + alto_cara);        // Superior izquierda
+    glEnd();
     glDisable(GL_TEXTURE_2D);
 
-    // Texto de munición (más grande y ajustado)
-    sprintf(buffer, "Municion: %d", 42); // puedes hacerlo variable
-    glColor3f(1.0f, 1.0f, 0.0f); // Amarillo
-    glRasterPos2f(ancho_pantalla - 180, 75); // Mover más a la derecha y ajustar vertical
-    for (char* c = buffer; *c != '\0'; c++) {
-        glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c); // Fuente más grande (alternativa)
-    }
-      
+    // --- Texto de vidas con sombra y color rojo DOOM ---
+    char buffer[50];
+    sprintf(buffer, "VIDAS");
+    dibujarTextoSombreado(40, 80, buffer, GLUT_BITMAP_HELVETICA_18, 0.9,0.2,0.2);
+    sprintf(buffer, "%d", vidas);
+    dibujarTextoSombreado(60, 48, buffer, GLUT_BITMAP_TIMES_ROMAN_24, 1,1,1);
 
-    // Restaurar matrices
+    // --- Texto de munición con sombra y color amarillo ---
+    sprintf(buffer, "MUNICION");
+    dibujarTextoSombreado(ancho_pantalla-110, 80, buffer, GLUT_BITMAP_HELVETICA_18, 1,0.9,0.2);
+	sprintf(buffer, "%d", municion); // Usa tu variable real    dibujarTextoSombreado(ancho_pantalla-140, 48, buffer, GLUT_BITMAP_TIMES_ROMAN_24, 1,1,1);
+    dibujarTextoSombreado(ancho_pantalla-75, 48, buffer, GLUT_BITMAP_TIMES_ROMAN_24, 1,1,1);
+    const char* nombre_arma = "PISTOLA";
+    switch(arma_actual) {
+        case 0: nombre_arma = "PISTOLA"; break;
+        case 1: nombre_arma = "ESCOPETA"; break;
+        case 2: nombre_arma = "REVOLVER"; break;
+        default: break;
+    }
+    dibujarTextoSombreado(ancho_pantalla/2-54, 95, nombre_arma, GLUT_BITMAP_HELVETICA_18, 0.8,0.8,0.85);
+
+    // --- Restaurar matrices ---
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
@@ -500,16 +579,12 @@ void dibujarTexto(float x, float y, const char* texto) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-
 void dibujar_pared_mapa(float offset_mapa_x, float offset_mapa_y, float escala_mapa, float offset_mundo, float x1, float z1, float x2, float z2) {
     glBegin(GL_LINES);
         glVertex2f(offset_mapa_x + (x1 + offset_mundo) * escala_mapa, offset_mapa_y + (z1 + offset_mundo) * escala_mapa);
         glVertex2f(offset_mapa_x + (x2 + offset_mundo) * escala_mapa, offset_mapa_y + (z2 + offset_mundo) * escala_mapa);
     glEnd();
 }
-
-
-
 
 void dibujarMinimapa(float grosor_pared, float altura_pared) {
     // Cambiar a modo 2D
@@ -1541,7 +1616,7 @@ void dibujarEscena() {
         // Llamada al HUD en la escena del juego
         glDisable(GL_LIGHTING);        // Desactiva la iluminación global
         glDisable(GL_DEPTH_TEST);
-        dibujarHUD();
+        dibujarHUD(municion);
 		crearMenu();
 
         // Dibujar el minimapa
@@ -1558,12 +1633,16 @@ void dibujarEscena() {
 float ultimoTiempo = 0.0f;
 
 void actualizar(int value) {
-    // Calcula deltaTime
+    // Calcula deltaTime seguro
     float tiempoActual = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // segundos
     float deltaTime = tiempoActual - ultimoTiempo;
     ultimoTiempo = tiempoActual;
 
-    if (juego_terminado) return;
+    if (juego_terminado) {
+        glutPostRedisplay();
+        glutTimerFunc(20, actualizar, 0); // Sigue actualizando para HUD o animaciones
+        return;
+    }
 
     rebote_enemigo += direccion_rebote * 0.01f;
     if (rebote_enemigo > 0.2f || rebote_enemigo < 0.0f)
@@ -1586,8 +1665,9 @@ void actualizar(int value) {
         }
     }
 
-    // --- ¡Actualiza la animación del arma aquí! ---
+    // Animación de arma y DOOMGUY
     actualizarAnimacionArma(deltaTime);
+    actualizarAnimacionCara(deltaTime); // <-- ¡AQUÍ!
 
     glutPostRedisplay();
     glutTimerFunc(20, actualizar, 0);
@@ -1774,6 +1854,8 @@ int main(int argc, char** argv) {
 	cargarFramesPistola();
 	cargarFramesEscopeta();
 	cargarFramesRevolver();
+   	cargarFramesCara();
+
    
     glutPostRedisplay();
     glutDisplayFunc(dibujarEscena);
