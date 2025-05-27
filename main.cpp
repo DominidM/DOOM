@@ -115,7 +115,7 @@ GLuint cargarTextura(const char* ruta) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     stbi_image_free(data);
-
+    
     return id_textura;
 }
 
@@ -130,6 +130,35 @@ void cargarFramesArma() {
     arma_frames.push_back(cargarTextura("pistola_1.png"));
     arma_frames.push_back(cargarTextura("pistola_2.png"));
     arma_frames.push_back(cargarTextura("pistola_3.png"));
+}
+
+void cargarFramesEscopeta() {
+    arma_frames.push_back(cargarTextura("escopeta_0.png"));
+    arma_frames.push_back(cargarTextura("escopeta_1.png"));
+    arma_frames.push_back(cargarTextura("escopeta_2.png"));
+    arma_frames.push_back(cargarTextura("escopeta_3.png"));
+    arma_frames.push_back(cargarTextura("escopeta_4.png"));
+    arma_frames.push_back(cargarTextura("escopeta_5.png"));
+    arma_frames.push_back(cargarTextura("escopeta_6.png"));
+    arma_frames.push_back(cargarTextura("escopeta_7.png"));
+}
+
+void cargarFramesRevolver() {
+    arma_frames.push_back(cargarTextura("revolver_0.png"));
+    arma_frames.push_back(cargarTextura("revolver_1.png"));
+    arma_frames.push_back(cargarTextura("revolver_2.png"));
+    arma_frames.push_back(cargarTextura("revolver_3.png"));
+    arma_frames.push_back(cargarTextura("revolver_4.png"));
+    arma_frames.push_back(cargarTextura("revolver_5.png"));
+    arma_frames.push_back(cargarTextura("revolver_6.png"));
+}
+
+
+void cargarFramesCara() {
+    arma_frames.push_back(cargarTextura("doomguy_0.png"));
+    arma_frames.push_back(cargarTextura("doomguy_1.png"));
+    arma_frames.push_back(cargarTextura("doomguy_2.png"));
+    arma_frames.push_back(cargarTextura("doomguy_3.png"));
 }
 
 
