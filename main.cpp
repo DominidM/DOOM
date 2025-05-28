@@ -1675,9 +1675,176 @@ void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float juga
 }
 
 
-
 // Variable global para el último tiempo de actualización
 float ultimoTiempo = 0.0f;
+
+
+
+// Variables de estado de teclas para movimiento fluido
+bool tecla_w = false, tecla_a = false, tecla_s = false, tecla_d = false;
+
+// Llama a este en glutKeyboardFunc
+void manejarTeclas(unsigned char key, int x, int y) 
+{
+    // Mostrar/Ocultar menú con 'M' o 'm'
+    if (key == 'm' || key == 'M') {
+        mostrarMenu = !mostrarMenu;
+        glutPostRedisplay();
+        return;
+    }
+
+    // --- Menú 2D activo: control de opciones ---
+    if (mostrarMenu) 
+    {
+        switch (key) {
+            case '1':
+                modoVisual = 0; // Día
+                break;
+            case '2':
+                modoVisual = 1; // Noche
+                break;
+            case '3':
+                reproducirMusica("soundtrack.mp3");
+                break;
+            case '4':
+                detenerMusica();
+                break;
+            case '5':
+            case 27: // ESC
+                exit(0);
+                break;
+        }
+        glutPostRedisplay();
+        return; 
+    }
+    
+    // --- Iniciar juego con ENTER o ESPACIO ---
+    if (!juego_iniciado) {
+        if (key == ' ' || key == 13) { // 13 es ENTER
+            juego_iniciado = true;
+            resetearPosicionJugador();
+            vidas = 3;
+            juego_terminado = false;
+        }
+        return; // No procesar otras teclas si el juego no ha comenzado
+    }
+
+    // --- Si el juego terminó, ignora teclas ---
+    if (juego_terminado) return;
+    
+    // --- Cambio de arma instantáneo ---
+    if (key == '1') {
+        arma_actual = PISTOLA;
+        arma_frames_actual = &frames_pistola;
+        arma_frame_actual = 0;
+        return;
+    }
+    if (key == '2') {
+        arma_actual = ESCOPETA;
+        arma_frames_actual = &frames_escopeta;
+        arma_frame_actual = 0;
+        return;
+    }
+    if (key == '3') {
+        arma_actual = REVOLVER;
+        arma_frames_actual = &frames_revolver;
+        arma_frame_actual = 0;
+        return;
+    }
+
+    // --- Movimiento fluido: activa flags de teclas ---
+    switch (key) {
+        case 'w': tecla_w = true; break;
+        case 'a': tecla_a = true; break;
+        case 's': tecla_s = true; break;
+        case 'd': tecla_d = true; break;
+        case ' ':
+            if (!esta_saltando) {
+                esta_saltando = true;
+                velocidad_salto = VELOCIDAD_SALTO_INICIAL;
+            }
+            break;
+        case 'f': // Disparo
+            esta_animando_disparo = true;
+            arma_frame_actual = 0; // reinicia animación
+            arma_tiempo = 0.0f;
+            {
+                float distancia_impacto;
+                for (int i = 0; i < 3; ++i) {
+                    CajaColision caja_enemigo = obtenerCajaColisionEnemigo(i);
+                    if (rayoIntersectaCaja(posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
+                                           direccion_camara_x, direccion_camara_y, direccion_camara_z,
+                                           caja_enemigo, distancia_impacto)) {
+                        std::cout << "¡Impacto en el enemigo " << i << " a distancia " << distancia_impacto << "!" << std::endl;
+                        break;
+                    }
+                }
+            }
+            break;
+        case 27: // ESC
+            exit(0);
+    }
+}
+
+// Para movimiento fluido: llama a esto en glutKeyboardUpFunc
+void manejarTeclasUp(unsigned char key, int x, int y)
+{
+    switch (key) {
+        case 'w': tecla_w = false; break;
+        case 'a': tecla_a = false; break;
+        case 's': tecla_s = false; break;
+        case 'd': tecla_d = false; break;
+    }
+}
+
+// Llama a esto en tu ciclo de actualización (timer o idle)
+void actualizarMovimientoJugador(float deltaTime)
+{
+    float velocidad_movimiento = 4.0f * deltaTime; // Ajusta la velocidad aquí (más grande = más rápido)
+    float radianes_yaw = angulo_yaw * M_PI / 180.0f;
+    float frente_x = cos(radianes_yaw);
+    float frente_z = sin(radianes_yaw);
+
+    // Vector lateral normalizado
+    float derechaX = -frente_z;
+    float derechaZ =  frente_x;
+    float magnitud = sqrt(derechaX * derechaX + derechaZ * derechaZ);
+    if (magnitud != 0.0f) {
+        derechaX /= magnitud;
+        derechaZ /= magnitud;
+    }
+
+    bool movimiento = false;
+
+    if (tecla_w) {
+        posicion_camara_x += frente_x * velocidad_movimiento;
+        posicion_camara_z += frente_z * velocidad_movimiento;
+        movimiento = true;
+    }
+    if (tecla_s) {
+        posicion_camara_x -= frente_x * velocidad_movimiento;
+        posicion_camara_z -= frente_z * velocidad_movimiento;
+        movimiento = true;
+    }
+    if (tecla_a) {
+        posicion_camara_x -= derechaX * velocidad_movimiento;
+        posicion_camara_z -= derechaZ * velocidad_movimiento;
+        movimiento = true;
+    }
+    if (tecla_d) {
+        posicion_camara_x += derechaX * velocidad_movimiento;
+        posicion_camara_z += derechaZ * velocidad_movimiento;
+        movimiento = true;
+    }
+
+    // Sincroniza lógica de jugador
+    if (movimiento) {
+        jugador.x = posicion_camara_x;
+        jugador.z = posicion_camara_z;
+    }
+}
+
+
 void actualizar(int value) {
     // Calcula deltaTime seguro
     float tiempoActual = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // segundos
@@ -1717,6 +1884,7 @@ void actualizar(int value) {
     // Animación de arma y DOOMGUY (cara)
     actualizarAnimacionArma(deltaTime);
     actualizarAnimacionCara(deltaTime);
+    actualizarMovimientoJugador(deltaTime);
 
     // --- Actualización de enemigos ---
     float velocidad = 2.0f; // o el valor que prefieras
@@ -1729,6 +1897,8 @@ void actualizar(int value) {
 	    actualizarAnimacionEnemigo(enemigos[i], deltaTime);
 	    printf("Jugador en (%.2f, %.2f)\n", jugador.x, jugador.z);
 	}
+	
+	
     glutPostRedisplay();
     glutTimerFunc(20, actualizar, 0);
 }
@@ -1984,142 +2154,6 @@ void dibujarEscena() {
 
 
 
-// Variables de estado de teclas
-bool tecla_w = false, tecla_a = false, tecla_s = false, tecla_d = false;
-
-// Manejo de teclas principal
-void manejarTeclas(unsigned char key, int x, int y) 
-{
-    // Mostrar/Ocultar menú con 'M' o 'm'
-    if (key == 'm' || key == 'M') {
-        mostrarMenu = !mostrarMenu;
-        glutPostRedisplay();
-        return;
-    }
-
-    // --- Menú 2D activo: control de opciones ---
-    if (mostrarMenu) 
-    {
-        switch (key) {
-            case '1':
-                modoVisual = 0; // Día
-                break;
-            case '2':
-                modoVisual = 1; // Noche
-                break;
-            case '3':
-                reproducirMusica("soundtrack.mp3");
-                break;
-            case '4':
-                detenerMusica();
-                break;
-            case '5':
-            case 27: // ESC
-                exit(0);
-                break;
-        }
-        glutPostRedisplay();
-        return; 
-    }
-    
-    // --- Iniciar juego con ENTER o ESPACIO ---
-    if (!juego_iniciado) {
-        if (key == ' ' || key == 13) { // 13 es ENTER
-            juego_iniciado = true;
-            resetearPosicionJugador();
-            vidas = 3;
-            juego_terminado = false;
-        }
-        return; // No procesar otras teclas si el juego no ha comenzado
-    }
-
-    // --- Si el juego terminó, ignora teclas ---
-    if (juego_terminado) return;
-    
-    // --- Cambio de arma ---
-    if (key == '1') {
-        arma_actual = PISTOLA;
-        arma_frames_actual = &frames_pistola;
-        arma_frame_actual = 0;
-        return;
-    }
-    if (key == '2') {
-        arma_actual = ESCOPETA;
-        arma_frames_actual = &frames_escopeta;
-        arma_frame_actual = 0;
-        return;
-    }
-    if (key == '3') {
-        arma_actual = REVOLVER;
-        arma_frames_actual = &frames_revolver;
-        arma_frame_actual = 0;
-        return;
-    }
-
-    // --- Movimiento y acciones ---
-    float velocidad_movimiento = 1.0f;
-    float derechaX = -direccion_camara_z;
-    float derechaZ = direccion_camara_x;
-    float radianes_yaw = angulo_yaw * M_PI / 180.0f;
-    float frente_x = cos(radianes_yaw);
-    float frente_z = sin(radianes_yaw);
-
-    bool movimiento = false;
-
-    switch (key) {
-        case 'w':
-            posicion_camara_x += frente_x * velocidad_movimiento;
-            posicion_camara_z += frente_z * velocidad_movimiento;
-            movimiento = true;
-            break;
-        case 's':
-            posicion_camara_x -= frente_x * velocidad_movimiento;
-            posicion_camara_z -= frente_z * velocidad_movimiento;
-            movimiento = true;
-            break;
-        case 'a':
-            posicion_camara_x -= derechaX * velocidad_movimiento;
-            posicion_camara_z -= derechaZ * velocidad_movimiento;
-            movimiento = true;
-            break;
-        case 'd':
-            posicion_camara_x += derechaX * velocidad_movimiento;
-            posicion_camara_z += derechaZ * velocidad_movimiento;
-            movimiento = true;
-            break;
-        case ' ':
-            if (!esta_saltando) {
-                esta_saltando = true;
-                velocidad_salto = VELOCIDAD_SALTO_INICIAL;
-            }
-            break;
-        case 'f': // Disparo
-            esta_animando_disparo = true;
-            arma_frame_actual = 0; // reinicia animación
-            arma_tiempo = 0.0f;
-            {
-                float distancia_impacto;
-                for (int i = 0; i < 3; ++i) {
-                    CajaColision caja_enemigo = obtenerCajaColisionEnemigo(i);
-                    if (rayoIntersectaCaja(posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
-                                           direccion_camara_x, direccion_camara_y, direccion_camara_z,
-                                           caja_enemigo, distancia_impacto)) {
-                        std::cout << "¡Impacto en el enemigo " << i << " a distancia " << distancia_impacto << "!" << std::endl;
-                        break;
-                    }
-                }
-            }
-            break;
-        case 27: // ESC
-            exit(0);
-    }
-
-    // --- Sincroniza la posición lógica del jugador con la cámara ---
-    if (movimiento) {
-        jugador.x = posicion_camara_x;
-        jugador.z = posicion_camara_z;
-    }
-}
 
 void inicializarRenderizado() {
 
@@ -2192,9 +2226,10 @@ int main(int argc, char** argv) {
     glutPostRedisplay();
     glutDisplayFunc(dibujarEscena);
 
-    glutKeyboardFunc(manejarTeclas);
     glutPassiveMotionFunc(movimientoMouse);
-    
+    glutKeyboardFunc(manejarTeclas);
+	glutKeyboardUpFunc(manejarTeclasUp);
+
     glutTimerFunc(20, actualizar, 0);
     glutReshapeFunc(redimensionar);
     
