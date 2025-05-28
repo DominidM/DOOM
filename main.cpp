@@ -54,31 +54,6 @@ int sonidoActivo = 0;    // ELECCION SONIDO
 bool mostrarMenu = false;
 int opcionSeleccionada = -1;
 
-
-
-
-
-float rebote_enemigo = 0.2f;
-float direccion_rebote = 1.0f;
-const int NUM_ENEMIGOS = 8;
-float posicion_enemigo[NUM_ENEMIGOS][2] = {
-    {-5.0f, 5.0f},
-    {5.0f, -5.0f},
-    {0.0f, 7.0f},
-    {-10.0f, -10.0f}, // Posición del enemigo 4
-    {15.0f, 2.0f},      
-	{25.0f, 2.0f}, 
-	{55.0f, 2.0f} // Posición del enemigo 5
-};
-
-
-
-
-
-
-
-
-
 //============MENU 2
 typedef enum {
     MODO_DIA,
@@ -98,6 +73,7 @@ int alto_pantalla = 800;
 GLuint texturaID_pared; 
 GLuint texturaID_techo; 
 GLuint texturaID_suelo;
+GLuint texturaID_cielo;
 GLuint texturaHUD = 0;
 
 struct PosicionJugador {
@@ -105,11 +81,6 @@ struct PosicionJugador {
     float z;
 };
 PosicionJugador jugador = {0.0f, 0.0f}; // Inicializa donde quieras que empiece el jugador
-
-struct Posicion {
-    float x;
-    float z;
-};
 
 // Estados posibles para el enemigo
 enum EstadoEnemigo { CAMINAR, ATACAR, MORIR, MUERTO };
@@ -195,8 +166,6 @@ void cargarFramesEnemigo() {
     frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
     frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
     frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_2.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_2.png"));
     frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
     frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
     frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
@@ -313,8 +282,6 @@ GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
         default:      return 0;
     }
 }
-
-
 void actualizarAnimacionCara(float deltaTime) {
     cara_tiempo += deltaTime;
     if (cara_tiempo >= cara_duracion_frame) {
@@ -325,7 +292,6 @@ void actualizarAnimacionCara(float deltaTime) {
         }
     }
 }
-
 void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_z) {
     // Si ya está muerto, no hace nada
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
@@ -345,13 +311,12 @@ void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_z)
     if (enemigo.estado == MORIR) return; // Está muriendo, no hace nada más
 
     // Cambia de estado según la distancia
-    if (distancia < 2.0f) {
+    if (distancia < 5.0f) {
         enemigo.estado = ATACAR;
     } else {
         enemigo.estado = CAMINAR;
     }
 }
-
 void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
     enemigo.tiempoAnimacion += deltaTime;
@@ -380,11 +345,6 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
             enemigo.frameActual = 0;
     }
 }
-
-
-
-
-
 void dibujarTextoSombreado(float x, float y, const char* texto, void* fuente, float r, float g, float b) {
     // Sombra
     glColor3f(0,0,0); 
@@ -452,80 +412,6 @@ void actualizarAnimacionArma(float deltaTime) {
         }
     }
 }
-
-
-
-
-
-
-
-
-
-// Estructura para representar la caja de colisión de un objeto (enemigo)
-struct CajaColision {
-    float minX, maxX;
-    float minY, maxY;
-    float minZ, maxZ;
-};
-
-// Función para obtener la caja de colisión de un enemigo (ajusta según tu representación)
-CajaColision obtenerCajaColisionEnemigo(int indice_enemigo) {
-    CajaColision caja;
-    float tamano = 10.0f; // Asumiendo que tus cubos enemigos tienen lado 2.0, el "radio" es 1.0
-    caja.minX = posicion_enemigo[indice_enemigo][0] - tamano;
-    caja.maxX = posicion_enemigo[indice_enemigo][0] + tamano;
-    caja.minY = 0.0f;     // Ajusta si tus enemigos no están a nivel del suelo
-    caja.maxY = 2.0f;     // Ajusta según la altura de tus enemigos
-    caja.minZ = posicion_enemigo[indice_enemigo][1] - tamano;
-    caja.maxZ = posicion_enemigo[indice_enemigo][1] + tamano;
-    return caja;
-}
-
-// Función para verificar si un rayo intersecta con una caja de colisiddadsasón
-bool rayoIntersectaCaja(float origenX, float origenY, float origenZ,
-                        float direccionX, float direccionY, float direccionZ,
-                        const CajaColision& caja, float& t) {
-    float tMin = -INFINITY;
-    float tMax = INFINITY;
-
-    float limites[] = {caja.minX, caja.maxX, caja.minY, caja.maxY, caja.minZ, caja.maxZ};
-    float origenes[] = {origenX, origenY, origenZ};
-    float direcciones[] = {direccionX, direccionY, direccionZ};
-
-    for (int i = 0; i < 3; ++i) {
-        if (std::abs(direcciones[i]) < 1e-6) { // Rayo paralelo al plano
-            if (origenes[i] < limites[2 * i] || origenes[i] > limites[2 * i + 1]) {
-                return false;
-            }
-        } else {
-            float t1 = (limites[2 * i] - origenes[i]) / direcciones[i];
-            float t2 = (limites[2 * i + 1] - origenes[i]) / direcciones[i];
-
-            if (t1 > t2) std::swap(t1, t2);
-
-            tMin = std::max(tMin, t1);
-            tMax = std::min(tMax, t2);
-
-            if (tMin > tMax) {
-                return false;
-            }
-        }
-    }
-
-    t = tMin; // Distancia al punto de intersección
-    return true;
-}
-
-
-
-
-
-
-
-
-
-
-
 void resetearPosicionJugador() {
     // Actualiza struct jugador
     jugador.x = 8.0f;
@@ -579,22 +465,9 @@ void manejarClickMouse(int button, int state, int x, int y) {
         } else if (arma_actual == REVOLVER) {
             reproducirSonidoArma("revolver.mp3");
         }
-        // Si tienes más armas, agrégalas aquí
 
-        // --- Chequea si impacta un enemigo ---
-        float distancia_impacto;
-        for (int i = 0; i < 3; ++i) {
-            CajaColision caja_enemigo = obtenerCajaColisionEnemigo(i);
-            if (rayoIntersectaCaja(posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
-                                   direccion_camara_x, direccion_camara_y, direccion_camara_z,
-                                   caja_enemigo, distancia_impacto)) {
-                std::cout << "¡Impacto en el enemigo " << i << " a distancia " << distancia_impacto << "!" << std::endl;
-                break;
-            }
-        }
     }
 }
-// ==== UTILITARIAS ====
 void dibujarHUD(int municion) {
 
     // Cambiar a modo 2D
@@ -739,15 +612,8 @@ void movimientoMouse(int x, int y) {
 
     glutPostRedisplay();
 }
-bool verificarColision() {
-    for (int i = 0; i < 3; ++i) {
-        float dx = posicion_camara_x - posicion_enemigo[i][0];
-        float dz = posicion_camara_z - posicion_enemigo[i][1];
-        float distancia_cuadrada = dx * dx + dz * dz;
-        if (distancia_cuadrada < DISTANCIA_COLISION_CUADRADA) return true;
-    }
-    return false;
-}
+
+
 void dibujarLineaPared(float fijo, bool horizontal) {
     for (float var = -0.0f; var <= 50.0f; var += 2.0f) {
         glPushMatrix();
@@ -886,19 +752,7 @@ void dibujarMinimapa(float grosor_pared, float altura_pared) {
         glVertex2f(jugador_mapa_x - tamano_jugador / 2, jugador_mapa_y + tamano_jugador / 2);
     glEnd();
 
-	// Dibujar a los enemigos como puntos rojos
-	glColor3f(1.0f, 0.0f, 0.0f);
-	float tamano_enemigo = 6.0f;
-	for (int i = 0; i < NUM_ENEMIGOS; ++i) {
-	    float enemigo_mapa_x = offset_mapa_x + posicion_enemigo[i][0] * escala_mapa;
-	    float enemigo_mapa_y = offset_mapa_y + posicion_enemigo[i][1] * escala_mapa;
-	    glBegin(GL_QUADS);
-	        glVertex2f(enemigo_mapa_x - tamano_enemigo / 2, enemigo_mapa_y - tamano_enemigo / 2);
-	        glVertex2f(enemigo_mapa_x + tamano_enemigo / 2, enemigo_mapa_y - tamano_enemigo / 2);
-	        glVertex2f(enemigo_mapa_x + tamano_enemigo / 2, enemigo_mapa_y + tamano_enemigo / 2);
-	        glVertex2f(enemigo_mapa_x - tamano_enemigo / 2, enemigo_mapa_y + tamano_enemigo / 2);
-	    glEnd();
-	}
+
 
     // Restaurar matrices
     glPopMatrix();
@@ -1639,11 +1493,6 @@ void inicializarEnemigos() {
     enemigos[2].vida = 100; enemigos[2].estado = CAMINAR; enemigos[2].activo = true;
     // ... inicializa los demás campos según tu struct Enemigo
 }
-
-
-
-
-
 void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float jugador_z) {
     if (!enemigo.activo) return;
     float dx = jugador_x - enemigo.x;
@@ -1675,9 +1524,16 @@ void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float juga
 }
 
 
+
+
+
+
+
+
+
+
 // Variable global para el último tiempo de actualización
 float ultimoTiempo = 0.0f;
-
 
 
 // Variables de estado de teclas para movimiento fluido
@@ -1769,16 +1625,7 @@ void manejarTeclas(unsigned char key, int x, int y)
             arma_frame_actual = 0; // reinicia animación
             arma_tiempo = 0.0f;
             {
-                float distancia_impacto;
-                for (int i = 0; i < 3; ++i) {
-                    CajaColision caja_enemigo = obtenerCajaColisionEnemigo(i);
-                    if (rayoIntersectaCaja(posicion_camara_x, posicion_camara_y + altura_salto, posicion_camara_z,
-                                           direccion_camara_x, direccion_camara_y, direccion_camara_z,
-                                           caja_enemigo, distancia_impacto)) {
-                        std::cout << "¡Impacto en el enemigo " << i << " a distancia " << distancia_impacto << "!" << std::endl;
-                        break;
-                    }
-                }
+               
             }
             break;
         case 27: // ESC
@@ -1800,7 +1647,7 @@ void manejarTeclasUp(unsigned char key, int x, int y)
 // Llama a esto en tu ciclo de actualización (timer o idle)
 void actualizarMovimientoJugador(float deltaTime)
 {
-    float velocidad_movimiento = 4.0f * deltaTime; // Ajusta la velocidad aquí (más grande = más rápido)
+    float velocidad_movimiento = 10.0f * deltaTime; 
     float radianes_yaw = angulo_yaw * M_PI / 180.0f;
     float frente_x = cos(radianes_yaw);
     float frente_z = sin(radianes_yaw);
@@ -1844,7 +1691,6 @@ void actualizarMovimientoJugador(float deltaTime)
     }
 }
 
-
 void actualizar(int value) {
     // Calcula deltaTime seguro
     float tiempoActual = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // segundos
@@ -1857,10 +1703,7 @@ void actualizar(int value) {
         return;
     }
 
-    // Rebote visual de enemigos (si tienes alguna animación flotante)
-    rebote_enemigo += direccion_rebote * 0.01f;
-    if (rebote_enemigo > 0.2f || rebote_enemigo < 0.0f)
-        direccion_rebote *= -1;
+
 
     // Lógica de salto del jugador
     if (esta_saltando) {
@@ -1872,14 +1715,7 @@ void actualizar(int value) {
         }
     }
 
-    // Colisión del jugador con enemigos/proyectiles/etc.
-    if (verificarColision()) {
-        vidas--;
-        resetearPosicionJugador();
-        if (vidas <= 0) {
-            juego_terminado = true;
-        }
-    }
+
 
     // Animación de arma y DOOMGUY (cara)
     actualizarAnimacionArma(deltaTime);
@@ -2003,7 +1839,10 @@ void dibujarEscena() {
         gluLookAt(posicion_camara_x, posicion_camara_y + altura_salto + 2.0f, posicion_camara_z, 
                   posicion_camara_x + direccion_camara_x, posicion_camara_y + altura_salto + 1.0f + direccion_camara_y, posicion_camara_z + direccion_camara_z,
                   0.0f, 1.0f, 0.0f);
-
+                  
+                  
+                  
+                  
         // --- DIBUJAR EL SUELO ---
         glColor3f(1.0f, 1.0f, 1.0f); // Establecer color blanco para la textura
         glEnable(GL_TEXTURE_2D);
@@ -2024,7 +1863,6 @@ void dibujarEscena() {
 		// --- DIBUJAR EL TECHO ---
         glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para la textura
         glEnable(GL_TEXTURE_2D);
-        texturaID_techo = cargarTextura("techoInfierno.tga"); // Carga la textura
         glBindTexture(GL_TEXTURE_2D, texturaID_techo); // Enlaza la textura
 
         glBegin(GL_QUADS);
@@ -2034,15 +1872,11 @@ void dibujarEscena() {
             glTexCoord2f(0.0f, 10.0f); glVertex3f(-50.0f, 5.0f, 50.0f);
         glEnd();
 
-        glDisable(GL_TEXTURE_2D);
-
-        // --- DIBUJAR LAS PAREDES DEL LABERINTO ---
-        glColor3f(0.5f, 0.5f, 0.5f);
-        
-        float altura_pared = 4.70f; // Altura de las paredes
+        glDisable(GL_TEXTURE_2D);		     
+		
+		float altura_pared = 4.70f; // Altura de las paredes
         float grosor_pared = 3.0f;
-
-        // Paredes exteriores
+	  // Paredes exteriores
         glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para la textura
         glEnable(GL_TEXTURE_2D);
         texturaID_pared = cargarTextura("wall.tga"); // Carga la textura
@@ -2083,43 +1917,73 @@ void dibujarEscena() {
         }
 
         glDisable(GL_TEXTURE_2D);
+		
+		// --- FAROLILLOS EN LAS ESQUINAS ---
+		glDisable(GL_TEXTURE_2D);
+		float farol_altura = 5.2f;
+		float farol_radio = 0.4f;
+		float farol_color[4][3] = {
+		    {1.0f, 0.9f, 0.5f}, // Amarillo cálido
+		    {0.7f, 0.9f, 1.0f}, // Azul
+		    {1.0f, 0.7f, 0.7f}, // Rojo
+		    {0.7f, 1.0f, 0.7f}  // Verde claro
+		};
+		float esquina[4][2] = {
+		    {-50.0f, -50.0f},
+		    {50.0f, -50.0f},
+		    {-50.0f, 50.0f},
+		    {50.0f, 50.0f}
+		};
+		for (int i = 0; i < 4; ++i) {
+		    glPushMatrix();
+		    glTranslatef(esquina[i][0], farol_altura, esquina[i][1]);
+		    glColor3fv(farol_color[i]);
+		    glutSolidSphere(farol_radio, 16, 16);
+		    glColor3f(0.2f, 0.18f, 0.05f);
+		    glTranslatef(0.0f, -farol_altura, 0.0f);
+			GLUquadric* quad = gluNewQuadric();
+			gluCylinder(quad, 0.13, 0.13, farol_altura, 16, 2);
+			gluDeleteQuadric(quad);
 
-       	
-       	// --- DIBUJAR LAS PAREDES DEL LABERINTO (INTERIORES SEGÚN BOCETO) ---
-        glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para la textura
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, texturaID_pared);
-
-
-        // Pared vertical cerca del lado izquierdo
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -40.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, -40.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, -40.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -40.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -30.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, -30.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, -30.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -30.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -20.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, -20.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, -20.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -20.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -10.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, -10.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, -10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -10.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 0.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 0.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 0.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 0.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 10.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 10.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 10.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 20.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 20.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 20.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 20.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 30.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 30.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 30.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 30.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 40.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-40.0f + grosor_pared, 0.0f, 40.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-40.0f + grosor_pared, altura_pared, 40.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 40.0f); glEnd();
-
-        // Paredes horizontales que se extienden desde la pared izquierda
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 30.0f); glTexCoord2f(5.0f, 1.0f); glVertex3f(-40.0f + grosor_pared * 5, 0.0f, 30.0f); glTexCoord2f(5.0f, 0.0f); glVertex3f(-40.0f + grosor_pared * 5, altura_pared, 30.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 30.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, 10.0f); glTexCoord2f(3.0f, 1.0f); glVertex3f(-40.0f + grosor_pared * 3, 0.0f, 10.0f); glTexCoord2f(3.0f, 0.0f); glVertex3f(-40.0f + grosor_pared * 3, altura_pared, 10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, 10.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -10.0f); glTexCoord2f(4.0f, 1.0f); glVertex3f(-40.0f + grosor_pared * 4, 0.0f, -10.0f); glTexCoord2f(4.0f, 0.0f); glVertex3f(-40.0f + grosor_pared * 4, altura_pared, -10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -10.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-40.0f, 0.0f, -30.0f); glTexCoord2f(2.0f, 1.0f); glVertex3f(-40.0f + grosor_pared * 2, 0.0f, -30.0f); glTexCoord2f(2.0f, 0.0f); glVertex3f(-40.0f + grosor_pared * 2, altura_pared, -30.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-40.0f, altura_pared, -30.0f); glEnd();
-
-
-        // Pared vertical que conecta algunas horizontales
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, -20.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, -20.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, -20.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, -20.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, -10.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, -10.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, -10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, -10.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, 0.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, 0.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, 0.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, 0.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, 10.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, 10.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, 10.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, 10.0f); glEnd();
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-20.0f, 0.0f, 20.0f); glTexCoord2f(1.0f, 1.0f); glVertex3f(-20.0f + grosor_pared, 0.0f, 20.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(-20.0f + grosor_pared, altura_pared, 20.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-20.0f, altura_pared, 20.0f); glEnd();
-
-        // Pared horizontal en la parte inferior derecha
-        glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-10.0f, 0.0f, -40.0f); glTexCoord2f(6.0f, 1.0f); glVertex3f(-10.0f + grosor_pared * 6, 0.0f, -40.0f); glTexCoord2f(6.0f, 0.0f); glVertex3f(-10.0f + grosor_pared * 6, altura_pared, -40.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-10.0f, altura_pared, -40.0f); glEnd();
-        glDisable(GL_TEXTURE_2D);
-       	
+		    glPopMatrix();
+		}
+		
+		// --- PAREDES INTERIORES (color variado y efecto desgaste) ---
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, texturaID_pared);
+		// Puedes alternar colores para cada bloque o con ruido
+		srand(42);
+		for (int pared = 0; pared < 20; pared++) {
+		    float r = 0.88f + 0.10f * (rand() % 2); // blanco o gris muy suave
+		    float g = 0.88f + 0.10f * (rand() % 2);
+		    float b = 0.86f + 0.12f * (rand() % 3);
+		    glColor3f(r, g, b);
+		
+		    // Ejemplo: usa tus mismas coordenadas de paredes interiores aquí,
+		    // o pon aleatoriamente algunas internas llamativas:
+		    float x = (rand() % 70) - 35.0f;
+		    float z = (rand() % 70) - 35.0f;
+		    glBegin(GL_QUADS);
+		        glTexCoord2f(0.0f, 1.0f); glVertex3f(x, 0.0f, z);
+		        glTexCoord2f(1.0f, 1.0f); glVertex3f(x + grosor_pared, 0.0f, z);
+		        glTexCoord2f(1.0f, 0.0f); glVertex3f(x + grosor_pared, altura_pared, z);
+		        glTexCoord2f(0.0f, 0.0f); glVertex3f(x, altura_pared, z);
+		    glEnd();
+		}
+		
+		// --- SOMBRA BÁSICA BAJO LAS PAREDES (oscurece el suelo junto a la base de las paredes) ---
+		glDisable(GL_TEXTURE_2D);
+		for (float i = -50.0f; i <= 50.0f; i += grosor_pared) {
+		    glColor4f(0.1f, 0.1f, 0.1f, 0.4f); // Sombra semitransparente
+		    glBegin(GL_QUADS);
+		        glVertex3f(i, 0.01f, -50.0f);
+		        glVertex3f(i + grosor_pared, 0.01f, -50.0f);
+		        glVertex3f(i + grosor_pared, 0.01f, -50.7f);
+		        glVertex3f(i, 0.01f, -50.7f);
+		    glEnd();
+		}
+		
+		// --- FIN MAPA LLAMATIVO ---
 
        	
 		for (int i = 0; i < numEnemigos; ++i) {
@@ -2143,6 +2007,8 @@ void dibujarEscena() {
 		crearMenu();
 
         // Dibujar el minimapa
+        
+        
     	dibujarMinimapa(grosor_pared, altura_pared); // Pasa los valores aquí
 
         glEnable(GL_DEPTH_TEST);
@@ -2215,6 +2081,8 @@ int main(int argc, char** argv) {
 
     texturaID_suelo = cargarTextura("neutral.tga");
     texturaHUD = cargarTextura("hud.tga");    
+	texturaID_cielo = cargarTextura("cielo.tga");
+    texturaID_techo = cargarTextura("techoInfierno.tga"); // Carga la textura
 
    // Calcula deltaTime como ya lo haces
 	cargarFramesPistola();
