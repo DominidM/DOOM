@@ -80,38 +80,43 @@ bool esta_animando_disparo = false;
 int ancho_pantalla = 1200;
 int alto_pantalla = 800;
 
-struct Posicion {
-    float x;
-    float z;
-};
-
-Posicion jugador;
-
-struct Bala {
-    Posicion posicion;
-};
-
-
-enum EstadoEnemigo { CAMINAR, ATACAR, MORIR, MUERTO };
-
-struct Enemigo {
-    float x, y, z;
-    int vida;
-    EstadoEnemigo estado;
-    int frameActual;
-    float tiempoAnimacion;
-    bool activo;
-};
-
 // Declara una variable para la textura 
 GLuint texturaID_pared; 
 GLuint texturaID_techo; 
 GLuint texturaID_suelo;
 GLuint texturaHUD = 0;
 
+struct PosicionJugador {
+    float x;
+    float z;
+};
+PosicionJugador jugador = {0.0f, 0.0f}; // Inicializa donde quieras que empiece el jugador
+
+struct Posicion {
+    float x;
+    float z;
+};
+
+// Estados posibles para el enemigo
+enum EstadoEnemigo { CAMINAR, ATACAR, MORIR, MUERTO };
+
+struct Enemigo {
+    float x, y, z;
+    int vida;
+    int estado;
+    int frameActual;
+    float tiempoAnimacion;
+    bool activo;
+};
+
 // Array de enemigos y contador de enemigos activos:
 Enemigo enemigos[MAX_ENEMIGOS];
-int numEnemigos = 0;
+int numEnemigos = 1;
+
+
+enum TipoArma { PISTOLA = 0, ESCOPETA = 1, REVOLVER = 2 };
+int arma_actual = PISTOLA;
+
 
 GLuint cargarTextura(const char* nombreArchivo) {
     int width, height, channels;
@@ -130,8 +135,6 @@ GLuint cargarTextura(const char* nombreArchivo) {
     return textureID;
 }
 
-enum TipoArma { PISTOLA = 0, ESCOPETA = 1, REVOLVER = 2 };
-int arma_actual = PISTOLA;
 
 //VECTORERS PARA ARMAS
 std::vector<GLuint> frames_pistola;
@@ -298,7 +301,6 @@ void actualizarAnimacionCara(float deltaTime) {
         }
     }
 }
-
 void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
     enemigo.tiempoAnimacion += deltaTime;
@@ -327,7 +329,6 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
             enemigo.frameActual = 0;
     }
 }
-
 GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
     switch (enemigo.estado) {
         case CAMINAR: return frames_enemigo_walk[enemigo.frameActual];
@@ -368,17 +369,6 @@ void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float juga
 		glDisable(GL_BLEND);
 		glDisable(GL_TEXTURE_2D);
     glPopMatrix();
-}
-
-
-void moverEnemigoHaciaJugador(Enemigo& enemigo, float jugador_x, float jugador_z, float velocidad, float deltaTime) {
-    float dx = jugador_x - enemigo.x;
-    float dz = jugador_z - enemigo.z;
-    float distancia = sqrt(dx*dx + dz*dz);
-    if (distancia > 0.01f) {
-        enemigo.x += (dx / distancia) * velocidad * deltaTime;
-        enemigo.z += (dz / distancia) * velocidad * deltaTime;
-    }
 }
 
 
@@ -456,6 +446,8 @@ void actualizarAnimacionArma(float deltaTime) {
 
 
 
+
+
 // Estructura para representar la caja de colisión de un objeto (enemigo)
 struct CajaColision {
     float minX, maxX;
@@ -518,11 +510,18 @@ bool rayoIntersectaCaja(float origenX, float origenY, float origenZ,
 
 
 
+
+
+
 void resetearPosicionJugador() {
-    // Ejemplo: pon el jugador al inicio del mapa
-    posicion_camara_x = 8.0f;
+    // Actualiza struct jugador
+    jugador.x = 8.0f;
+    jugador.z = 0.0f;
+
+    // Actualiza también la cámara si es necesario
+    posicion_camara_x = jugador.x;
     posicion_camara_y = 0.80f; // Altura de la cámara (jugador de pie)
-    posicion_camara_z = 0.0f;
+    posicion_camara_z = jugador.z;
 
     // Opcional: resetear ángulos de cámara
     angulo_yaw = 0.0f;
@@ -532,6 +531,8 @@ void resetearPosicionJugador() {
     esta_saltando = false;
     altura_salto = 0.0f;
 }
+
+
 void reproducirSonidoArma(const char* archivo) {
     // Cierra el sonido anterior, si lo hay
     mciSendString("close sonidoArma", NULL, 0, NULL);
@@ -1611,6 +1612,72 @@ void MotosierraBorde(){
 }
 
 
+void moverEnemigoHaciaJugador(Enemigo& enemigo, float jugador_x, float jugador_z, float velocidad, float deltaTime) {
+    float dx = jugador_x - enemigo.x;
+    float dz = jugador_z - enemigo.z;
+    float distancia = sqrt(dx * dx + dz * dz);
+    if (distancia > 0.01f) {
+        enemigo.x += (dx / distancia) * velocidad * deltaTime;
+        enemigo.z += (dz / distancia) * velocidad * deltaTime;
+    }
+}
+
+
+
+// Variable global para el último tiempo de actualización
+float ultimoTiempo = 0.0f;
+
+void actualizar(int value) {
+    // Calcula deltaTime seguro
+    float tiempoActual = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // segundos
+    float deltaTime = tiempoActual - ultimoTiempo;
+    ultimoTiempo = tiempoActual;
+
+    if (juego_terminado) {
+        glutPostRedisplay();
+        glutTimerFunc(20, actualizar, 0); // Sigue actualizando para HUD o animaciones
+        return;
+    }
+
+    rebote_enemigo += direccion_rebote * 0.01f;
+    if (rebote_enemigo > 0.2f || rebote_enemigo < 0.0f)
+        direccion_rebote *= -1;
+
+    if (esta_saltando) {
+        altura_salto += velocidad_salto;
+        velocidad_salto -= GRAVEDAD;
+        if (altura_salto <= 0.0f) {
+            altura_salto = 0.0f;
+            esta_saltando = false;
+        }
+    }
+
+    if (verificarColision()) {
+        vidas--;
+        resetearPosicionJugador();
+        if (vidas <= 0) {
+            juego_terminado = true;
+        }
+    }
+
+    // Animación de arma y DOOMGUY
+    actualizarAnimacionArma(deltaTime);
+    actualizarAnimacionCara(deltaTime); 
+
+	float velocidad = 2.0f; // Unidades por segundo
+	
+	for (int i = 0; i < numEnemigos; ++i) {
+	    moverEnemigoHaciaJugador(enemigos[i], jugador.x, jugador.z, velocidad, deltaTime);
+	}
+	
+    glutPostRedisplay();
+    glutTimerFunc(20, actualizar, 0);
+}
+
+
+
+
+
 void dibujarEscena() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
@@ -1837,14 +1904,14 @@ void dibujarEscena() {
 	
 	    enemigos[1].x = 0; enemigos[1].y = 0; enemigos[1].z = 20;
 	    enemigos[1].vida = 100;
-	    enemigos[1].estado = CAMINAR;
+	    enemigos[1].estado = ATACAR;
 	    enemigos[1].frameActual = 0;
 	    enemigos[1].tiempoAnimacion = 0.0f;
 	    enemigos[1].activo = true;
 	
 	    enemigos[2].x = 15; enemigos[2].y = 0; enemigos[2].z = -5;
 	    enemigos[2].vida = 100;
-	    enemigos[2].estado = CAMINAR;
+	    enemigos[2].estado = MORIR;
 	    enemigos[2].frameActual = 0;
 	    enemigos[2].tiempoAnimacion = 0.0f;
 	    enemigos[2].activo = true;
@@ -1853,10 +1920,9 @@ void dibujarEscena() {
        	
        	
 		// --- DIBUJAR LOS ENEMIGOS ANIMADOS SPRITE/BILLBOARD ---
-		for (int i = 0; i < numEnemigos; ++i) {
-		    dibujarEnemigoBillboard(enemigos[i], posicion_camara_x, posicion_camara_z);
-		}
-		       	
+		 for (int i = 0; i < numEnemigos; ++i) {
+        dibujarEnemigoBillboard(enemigos[i], posicion_camara_x, posicion_camara_z);
+   		}
 		
 		// --- DIBUJAR EL ARMA CERCA DE LA CÁMARA ---
       	dibujarArmaAnimada();
@@ -1883,55 +1949,6 @@ void dibujarEscena() {
     glutSwapBuffers();
 }
 
-// Variable global para el último tiempo de actualización
-float ultimoTiempo = 0.0f;
-
-void actualizar(int value) {
-    // Calcula deltaTime seguro
-    float tiempoActual = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // segundos
-    float deltaTime = tiempoActual - ultimoTiempo;
-    ultimoTiempo = tiempoActual;
-
-    if (juego_terminado) {
-        glutPostRedisplay();
-        glutTimerFunc(20, actualizar, 0); // Sigue actualizando para HUD o animaciones
-        return;
-    }
-
-    rebote_enemigo += direccion_rebote * 0.01f;
-    if (rebote_enemigo > 0.2f || rebote_enemigo < 0.0f)
-        direccion_rebote *= -1;
-
-    if (esta_saltando) {
-        altura_salto += velocidad_salto;
-        velocidad_salto -= GRAVEDAD;
-        if (altura_salto <= 0.0f) {
-            altura_salto = 0.0f;
-            esta_saltando = false;
-        }
-    }
-
-    if (verificarColision()) {
-        vidas--;
-        resetearPosicionJugador();
-        if (vidas <= 0) {
-            juego_terminado = true;
-        }
-    }
-
-    // Animación de arma y DOOMGUY
-    actualizarAnimacionArma(deltaTime);
-    actualizarAnimacionCara(deltaTime); 
-
-	float velocidad = 2.0f; // Unidades por segundo
-	
-	for (int i = 0; i < numEnemigos; ++i) {
-	    moverEnemigoHaciaJugador(enemigos[i], jugador.x, jugador.z, velocidad, deltaTime);
-	}
-	
-    glutPostRedisplay();
-    glutTimerFunc(20, actualizar, 0);
-}
 
 
 
