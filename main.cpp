@@ -51,6 +51,12 @@ bool juego_iniciado = false; // Nuevo estado para la pantalla de inicio
 //============MENU 1
 int modoVisual = 0;      // ELECCION DIA
 int sonidoActivo = 0;    // ELECCION SONIDO
+bool mostrarMenu = false;
+int opcionSeleccionada = -1;
+
+
+
+
 
 float rebote_enemigo = 0.2f;
 float direccion_rebote = 1.0f;
@@ -64,6 +70,14 @@ float posicion_enemigo[NUM_ENEMIGOS][2] = {
 	{25.0f, 2.0f}, 
 	{55.0f, 2.0f} // Posición del enemigo 5
 };
+
+
+
+
+
+
+
+
 
 //============MENU 2
 typedef enum {
@@ -111,7 +125,7 @@ struct Enemigo {
 
 // Array de enemigos y contador de enemigos activos:
 Enemigo enemigos[MAX_ENEMIGOS];
-int numEnemigos = 1;
+const int numEnemigos = 3;
 
 
 enum TipoArma { PISTOLA = 0, ESCOPETA = 1, REVOLVER = 2 };
@@ -291,6 +305,16 @@ void cargarFramesCara() {
 
 // ACTUALIZAR ANIMACIONES 
 
+GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
+    switch (enemigo.estado) {
+        case CAMINAR: return frames_enemigo_walk[enemigo.frameActual];
+        case ATACAR:  return frames_enemigo_attack[enemigo.frameActual];
+        case MORIR:   return frames_enemigo_die[enemigo.frameActual];
+        default:      return 0;
+    }
+}
+
+
 void actualizarAnimacionCara(float deltaTime) {
     cara_tiempo += deltaTime;
     if (cara_tiempo >= cara_duracion_frame) {
@@ -301,6 +325,33 @@ void actualizarAnimacionCara(float deltaTime) {
         }
     }
 }
+
+void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_z) {
+    // Si ya está muerto, no hace nada
+    if (!enemigo.activo || enemigo.estado == MUERTO) return;
+
+    // Si la vida es 0 o menos, cambia a MORIR si no lo está ya
+    if (enemigo.vida <= 0 && enemigo.estado != MORIR && enemigo.estado != MUERTO) {
+        enemigo.estado = MORIR;
+        enemigo.tiempoAnimacion = 0.0f;
+        return;
+    }
+
+    // Calcula distancia al jugador
+    float dx = jugador_x - enemigo.x;
+    float dz = jugador_z - enemigo.z;
+    float distancia = sqrt(dx * dx + dz * dz);
+
+    if (enemigo.estado == MORIR) return; // Está muriendo, no hace nada más
+
+    // Cambia de estado según la distancia
+    if (distancia < 2.0f) {
+        enemigo.estado = ATACAR;
+    } else {
+        enemigo.estado = CAMINAR;
+    }
+}
+
 void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
     enemigo.tiempoAnimacion += deltaTime;
@@ -329,47 +380,9 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
             enemigo.frameActual = 0;
     }
 }
-GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
-    switch (enemigo.estado) {
-        case CAMINAR: return frames_enemigo_walk[enemigo.frameActual];
-        case ATACAR:  return frames_enemigo_attack[enemigo.frameActual];
-        case MORIR:   return frames_enemigo_die[enemigo.frameActual];
-        default:      return 0;
-    }
-}
 
 
 
-
-void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float jugador_z) {
-    if (!enemigo.activo) return;
-    float dx = jugador_x - enemigo.x;
-    float dz = jugador_z - enemigo.z;
-    float angle = atan2(dx, dz) * 180.0f / M_PI;
-    GLuint textura = obtenerTexturaEnemigo(enemigo);
-
-    glPushMatrix();
-        glTranslatef(enemigo.x, enemigo.y, enemigo.z);
-        glRotatef(angle, 0, 1, 0);
-		glEnable(GL_TEXTURE_2D);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glBindTexture(GL_TEXTURE_2D, textura);
-		glColor4f(1, 1, 1, 1); // Importante: alpha=1
-		
-		float escala = 2.50f; // Cambia este valor para ajustar el tamaño
-
-		glBegin(GL_QUADS);
-		    glTexCoord2f(0, 1); glVertex3f(-1 * escala, 0, 0);
-		    glTexCoord2f(1, 1); glVertex3f(1 * escala, 0, 0);
-		    glTexCoord2f(1, 0); glVertex3f(1 * escala, 2 * escala, 0);
-		    glTexCoord2f(0, 0); glVertex3f(-1 * escala, 2 * escala, 0);
-		glEnd();
-				
-		glDisable(GL_BLEND);
-		glDisable(GL_TEXTURE_2D);
-    glPopMatrix();
-}
 
 
 void dibujarTextoSombreado(float x, float y, const char* texto, void* fuente, float r, float g, float b) {
@@ -531,8 +544,6 @@ void resetearPosicionJugador() {
     esta_saltando = false;
     altura_salto = 0.0f;
 }
-
-
 void reproducirSonidoArma(const char* archivo) {
     // Cierra el sonido anterior, si lo hay
     mciSendString("close sonidoArma", NULL, 0, NULL);
@@ -897,8 +908,6 @@ void dibujarMinimapa(float grosor_pared, float altura_pared) {
 }
 
 
-bool mostrarMenu = false;
-int opcionSeleccionada = -1;
 //===========ILUMINACION
 void configurarIluminacion() {
     glEnable(GL_LIGHTING);
@@ -1616,17 +1625,59 @@ void moverEnemigoHaciaJugador(Enemigo& enemigo, float jugador_x, float jugador_z
     float dx = jugador_x - enemigo.x;
     float dz = jugador_z - enemigo.z;
     float distancia = sqrt(dx * dx + dz * dz);
-    if (distancia > 0.01f) {
+    if (distancia > 0.05f) { // evita división por cero
         enemigo.x += (dx / distancia) * velocidad * deltaTime;
         enemigo.z += (dz / distancia) * velocidad * deltaTime;
     }
+}
+void inicializarEnemigos() {
+    enemigos[0].x = -10; enemigos[0].y = 0; enemigos[0].z = 10;
+    enemigos[0].vida = 100; enemigos[0].estado = CAMINAR; enemigos[0].activo = true;
+    enemigos[1].x = 0; enemigos[1].y = 0; enemigos[1].z = 20;
+    enemigos[1].vida = 100; enemigos[1].estado = CAMINAR; enemigos[1].activo = true;
+    enemigos[2].x = 15; enemigos[2].y = 0; enemigos[2].z = -5;
+    enemigos[2].vida = 100; enemigos[2].estado = CAMINAR; enemigos[2].activo = true;
+    // ... inicializa los demás campos según tu struct Enemigo
+}
+
+
+
+
+
+void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float jugador_z) {
+    if (!enemigo.activo) return;
+    float dx = jugador_x - enemigo.x;
+    float dz = jugador_z - enemigo.z;
+    float angle = atan2(dx, dz) * 180.0f / M_PI;
+    GLuint textura = obtenerTexturaEnemigo(enemigo);
+
+    glPushMatrix();
+        glTranslatef(enemigo.x, enemigo.y, enemigo.z);
+        glRotatef(angle, 0, 1, 0);
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBindTexture(GL_TEXTURE_2D, textura);
+		glColor4f(1, 1, 1, 1); // Importante: alpha=1
+		
+		float escala = 2.50f; // Cambia este valor para ajustar el tamaño
+
+		glBegin(GL_QUADS);
+		    glTexCoord2f(0, 1); glVertex3f(-1 * escala, 0, 0);
+		    glTexCoord2f(1, 1); glVertex3f(1 * escala, 0, 0);
+		    glTexCoord2f(1, 0); glVertex3f(1 * escala, 2 * escala, 0);
+		    glTexCoord2f(0, 0); glVertex3f(-1 * escala, 2 * escala, 0);
+		glEnd();
+				
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+    glPopMatrix();
 }
 
 
 
 // Variable global para el último tiempo de actualización
 float ultimoTiempo = 0.0f;
-
 void actualizar(int value) {
     // Calcula deltaTime seguro
     float tiempoActual = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // segundos
@@ -1639,10 +1690,12 @@ void actualizar(int value) {
         return;
     }
 
+    // Rebote visual de enemigos (si tienes alguna animación flotante)
     rebote_enemigo += direccion_rebote * 0.01f;
     if (rebote_enemigo > 0.2f || rebote_enemigo < 0.0f)
         direccion_rebote *= -1;
 
+    // Lógica de salto del jugador
     if (esta_saltando) {
         altura_salto += velocidad_salto;
         velocidad_salto -= GRAVEDAD;
@@ -1652,6 +1705,7 @@ void actualizar(int value) {
         }
     }
 
+    // Colisión del jugador con enemigos/proyectiles/etc.
     if (verificarColision()) {
         vidas--;
         resetearPosicionJugador();
@@ -1660,21 +1714,24 @@ void actualizar(int value) {
         }
     }
 
-    // Animación de arma y DOOMGUY
+    // Animación de arma y DOOMGUY (cara)
     actualizarAnimacionArma(deltaTime);
-    actualizarAnimacionCara(deltaTime); 
+    actualizarAnimacionCara(deltaTime);
 
-	float velocidad = 2.0f; // Unidades por segundo
-	
+    // --- Actualización de enemigos ---
+    float velocidad = 2.0f; // o el valor que prefieras
+
 	for (int i = 0; i < numEnemigos; ++i) {
-	    moverEnemigoHaciaJugador(enemigos[i], jugador.x, jugador.z, velocidad, deltaTime);
+	    actualizarEstadoEnemigo(enemigos[i], jugador.x, jugador.z);
+	    if (enemigos[i].estado == CAMINAR) {
+	        moverEnemigoHaciaJugador(enemigos[i], jugador.x, jugador.z, velocidad, deltaTime);
+	    }
+	    actualizarAnimacionEnemigo(enemigos[i], deltaTime);
+	    printf("Jugador en (%.2f, %.2f)\n", jugador.x, jugador.z);
 	}
-	
     glutPostRedisplay();
     glutTimerFunc(20, actualizar, 0);
 }
-
-
 
 
 
@@ -1893,36 +1950,13 @@ void dibujarEscena() {
         glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-10.0f, 0.0f, -40.0f); glTexCoord2f(6.0f, 1.0f); glVertex3f(-10.0f + grosor_pared * 6, 0.0f, -40.0f); glTexCoord2f(6.0f, 0.0f); glVertex3f(-10.0f + grosor_pared * 6, altura_pared, -40.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-10.0f, altura_pared, -40.0f); glEnd();
         glDisable(GL_TEXTURE_2D);
        	
+
        	
-       	numEnemigos = 3; // Por ejemplo, 3 enemigos iniciales
-	    enemigos[0].x = -10; enemigos[0].y = 0; enemigos[0].z = 10;
-	    enemigos[0].vida = 100;
-	    enemigos[0].estado = CAMINAR;
-	    enemigos[0].frameActual = 0;
-	    enemigos[0].tiempoAnimacion = 0.0f;
-	    enemigos[0].activo = true;
-	
-	    enemigos[1].x = 0; enemigos[1].y = 0; enemigos[1].z = 20;
-	    enemigos[1].vida = 100;
-	    enemigos[1].estado = ATACAR;
-	    enemigos[1].frameActual = 0;
-	    enemigos[1].tiempoAnimacion = 0.0f;
-	    enemigos[1].activo = true;
-	
-	    enemigos[2].x = 15; enemigos[2].y = 0; enemigos[2].z = -5;
-	    enemigos[2].vida = 100;
-	    enemigos[2].estado = MORIR;
-	    enemigos[2].frameActual = 0;
-	    enemigos[2].tiempoAnimacion = 0.0f;
-	    enemigos[2].activo = true;
-	       	
-	       	
-       	
-       	
-		// --- DIBUJAR LOS ENEMIGOS ANIMADOS SPRITE/BILLBOARD ---
-		 for (int i = 0; i < numEnemigos; ++i) {
-        dibujarEnemigoBillboard(enemigos[i], posicion_camara_x, posicion_camara_z);
-   		}
+		for (int i = 0; i < numEnemigos; ++i) {
+		    printf("Dibujando enemigo %d en (%.2f, %.2f, %.2f)\n", i, enemigos[i].x, enemigos[i].y, enemigos[i].z);
+		    dibujarEnemigoBillboard(enemigos[i], jugador.x, jugador.z);
+		}
+		
 		
 		// --- DIBUJAR EL ARMA CERCA DE LA CÁMARA ---
       	dibujarArmaAnimada();
@@ -1930,7 +1964,6 @@ void dibujarEscena() {
         // Restaurar matrices de la escena del juego
         glPopMatrix();
         glMatrixMode(GL_PROJECTION);
-        glPopMatrix();
         glMatrixMode(GL_MODELVIEW);
 
         // Llamada al HUD en la escena del juego
@@ -1951,9 +1984,10 @@ void dibujarEscena() {
 
 
 
-
+// Variables de estado de teclas
 bool tecla_w = false, tecla_a = false, tecla_s = false, tecla_d = false;
 
+// Manejo de teclas principal
 void manejarTeclas(unsigned char key, int x, int y) 
 {
     // Mostrar/Ocultar menú con 'M' o 'm'
@@ -2022,6 +2056,7 @@ void manejarTeclas(unsigned char key, int x, int y)
         return;
     }
 
+    // --- Movimiento y acciones ---
     float velocidad_movimiento = 1.0f;
     float derechaX = -direccion_camara_z;
     float derechaZ = direccion_camara_x;
@@ -2029,22 +2064,28 @@ void manejarTeclas(unsigned char key, int x, int y)
     float frente_x = cos(radianes_yaw);
     float frente_z = sin(radianes_yaw);
 
+    bool movimiento = false;
+
     switch (key) {
         case 'w':
             posicion_camara_x += frente_x * velocidad_movimiento;
             posicion_camara_z += frente_z * velocidad_movimiento;
+            movimiento = true;
             break;
         case 's':
             posicion_camara_x -= frente_x * velocidad_movimiento;
             posicion_camara_z -= frente_z * velocidad_movimiento;
+            movimiento = true;
             break;
         case 'a':
             posicion_camara_x -= derechaX * velocidad_movimiento;
             posicion_camara_z -= derechaZ * velocidad_movimiento;
+            movimiento = true;
             break;
         case 'd':
             posicion_camara_x += derechaX * velocidad_movimiento;
             posicion_camara_z += derechaZ * velocidad_movimiento;
+            movimiento = true;
             break;
         case ' ':
             if (!esta_saltando) {
@@ -2071,6 +2112,12 @@ void manejarTeclas(unsigned char key, int x, int y)
             break;
         case 27: // ESC
             exit(0);
+    }
+
+    // --- Sincroniza la posición lógica del jugador con la cámara ---
+    if (movimiento) {
+        jugador.x = posicion_camara_x;
+        jugador.z = posicion_camara_z;
     }
 }
 
@@ -2152,6 +2199,7 @@ int main(int argc, char** argv) {
     glutReshapeFunc(redimensionar);
     
     glutSetCursor(GLUT_CURSOR_NONE);
+    inicializarEnemigos();  // SOLO aquí. No la llames nunca dentro de dibujar o actualizar.
     crearMenu();
 	crearMenu_2();
 	
