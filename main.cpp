@@ -7,19 +7,18 @@
 #include <stdio.h>
 #include <string.h>
 #ifdef _WIN32
-
 #include <windows.h>
-
 #include <mmsystem.h>
+#define MAX_ENEMIGOS 20 // O la cantidad máxima que desees
 #pragma comment(lib, "winmm.lib")
 #else
 #include <sys/time.h>
 #endif
-
 #define M_PI 3.14159265358979323846
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #include <string>
+
 
 // ==== CONSTANTES ===
 const float VELOCIDAD_MOVIMIENTO = 0.14f;
@@ -41,12 +40,10 @@ int alto_ventana = 800;
 int centro_X = ancho_ventana / 2;
 int centro_Y = alto_ventana / 2;
 float direccion_camara_x = 0.0f, direccion_camara_y = 0.0f, direccion_camara_z = -1.0f;
-
-// ==== VARIABLES GLOBALES ====
 float posicion_camara_x = 0.0f, posicion_camara_y = 1.0f, posicion_camara_z = 0.0f;
 float altura_salto = 0.10f, velocidad_salto = 0.10f;
 bool esta_saltando = false;
-int municion = 50; // Valor inicial, cámbialo según tu juego
+int municion = 50; 
 int vidas = 3;
 bool juego_terminado = false;
 bool juego_iniciado = false; // Nuevo estado para la pantalla de inicio
@@ -78,11 +75,8 @@ typedef enum {
 } opcionesMenu;
 
 
-
 //============arma
-
 bool esta_animando_disparo = false;
-
 int ancho_pantalla = 1200;
 int alto_pantalla = 800;
 
@@ -91,54 +85,66 @@ struct Posicion {
     float z;
 };
 
+Posicion jugador;
+
 struct Bala {
     Posicion posicion;
+};
+
+
+enum EstadoEnemigo { CAMINAR, ATACAR, MORIR, MUERTO };
+
+struct Enemigo {
+    float x, y, z;
+    int vida;
+    EstadoEnemigo estado;
+    int frameActual;
+    float tiempoAnimacion;
+    bool activo;
 };
 
 // Declara una variable para la textura 
 GLuint texturaID_pared; 
 GLuint texturaID_techo; 
 GLuint texturaID_suelo;
-GLuint texturaID_cara_doomguy;
-GLuint texturaID_pistola;
 GLuint texturaHUD = 0;
 
-std::vector<GLuint> pistola_animacion_texturas;
-int pistola_animacion_cuadro_actual = 0;
-int tiempo_inicio_animacion = 0;
-int duracion_entre_cuadros = 80; // Milisegundos por cuadro
+// Array de enemigos y contador de enemigos activos:
+Enemigo enemigos[MAX_ENEMIGOS];
+int numEnemigos = 0;
 
-//Función para cargar la textura
-GLuint cargarTextura(const char* ruta) {
-    int ancho, alto, canales;
-    unsigned char* data = stbi_load(ruta, &ancho, &alto, &canales, STBI_rgb_alpha);
-    if (!data) {
-        std::cerr << "Error al cargar la textura: " << ruta << std::endl;
-        return 0;
-    }
+GLuint cargarTextura(const char* nombreArchivo) {
+    int width, height, channels;
+    unsigned char* data = stbi_load(nombreArchivo, &width, &height, &channels, STBI_rgb_alpha);
 
-    GLuint id_textura;
-    glGenTextures(1, &id_textura);
-    glBindTexture(GL_TEXTURE_2D, id_textura);
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ancho, alto, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-
+    // Parámetros de textura
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     stbi_image_free(data);
-    
-    return id_textura;
+    return textureID;
 }
 
 enum TipoArma { PISTOLA = 0, ESCOPETA = 1, REVOLVER = 2 };
 int arma_actual = PISTOLA;
 
+//VECTORERS PARA ARMAS
 std::vector<GLuint> frames_pistola;
 std::vector<GLuint> frames_escopeta;
 std::vector<GLuint> frames_revolver;
 
+//Vectores para los frames de animación
+std::vector<GLuint> frames_enemigo_walk;
+std::vector<GLuint> frames_enemigo_attack;
+std::vector<GLuint> frames_enemigo_die;
 std::vector<GLuint> frames_cara;
+
+
 int cara_frame_actual = 0;
 float cara_tiempo = 0.0f;
 float cara_duracion_frame = 0.12f; // Velocidad de animación, ajusta a gusto
@@ -149,6 +155,7 @@ int arma_frame_actual = 0;
 float arma_tiempo = 0.0f;
 float arma_duracion_frame = 0.1f;
 
+
 // AJUSTES DE SONIDO
 void reproducirMusica(const char* archivo) {
     char comando[40];
@@ -156,7 +163,6 @@ void reproducirMusica(const char* archivo) {
     mciSendString(comando, NULL, 0, NULL);
     mciSendString("play miMusica repeat", NULL, 0, NULL); // repeat para bucle
 }
-
 void detenerMusica() {
     mciSendString("stop miMusica", NULL, 0, NULL);
     mciSendString("close miMusica", NULL, 0, NULL);
@@ -164,6 +170,43 @@ void detenerMusica() {
 
 
 // FRAMES 
+void cargarFramesEnemigo() {
+    // Animación de caminar
+    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_2.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_2.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
+    
+    // Animación de atacar
+    frames_enemigo_attack.push_back(cargarTextura("mod1_3.png"));
+    frames_enemigo_attack.push_back(cargarTextura("mod1_3.png"));
+    frames_enemigo_attack.push_back(cargarTextura("mod1_4.png"));
+    frames_enemigo_attack.push_back(cargarTextura("mod1_4.png"));
+    frames_enemigo_attack.push_back(cargarTextura("mod1_5.png"));
+    frames_enemigo_attack.push_back(cargarTextura("mod1_6.png"));
+    frames_enemigo_attack.push_back(cargarTextura("mod1_6.png"));
+    frames_enemigo_attack.push_back(cargarTextura("mod1_6.png"));
+    frames_enemigo_attack.push_back(cargarTextura("mod1_5.png"));
+
+
+    // Animación de morir
+    frames_enemigo_die.push_back(cargarTextura("mod1_7.png"));
+    frames_enemigo_die.push_back(cargarTextura("mod1_8.png"));
+    frames_enemigo_die.push_back(cargarTextura("mod1_9.png"));
+    frames_enemigo_die.push_back(cargarTextura("mod1_10.png"));
+    frames_enemigo_die.push_back(cargarTextura("mod1_11.png"));
+    frames_enemigo_die.push_back(cargarTextura("mod1_12.png"));
+    frames_enemigo_die.push_back(cargarTextura("mod1_13.png"));
+    frames_enemigo_die.push_back(cargarTextura("mod1_14.png"));
+    frames_enemigo_die.push_back(cargarTextura("mod1_14.png"));
+}
 void cargarFramesPistola() {
     frames_pistola.push_back(cargarTextura("pistola_0.png"));
     frames_pistola.push_back(cargarTextura("pistola_1.png"));
@@ -171,7 +214,6 @@ void cargarFramesPistola() {
     frames_pistola.push_back(cargarTextura("pistola_2.png"));
     frames_pistola.push_back(cargarTextura("pistola_3.png"));
 }
-
 void cargarFramesEscopeta() {
     frames_escopeta.push_back(cargarTextura("escopeta_0.png"));
     frames_escopeta.push_back(cargarTextura("escopeta_1.png"));
@@ -183,7 +225,6 @@ void cargarFramesEscopeta() {
     frames_escopeta.push_back(cargarTextura("escopeta_7.png"));
     frames_escopeta.push_back(cargarTextura("escopeta_7.png"));
 }
-
 void cargarFramesRevolver() {
     frames_revolver.push_back(cargarTextura("revolver_0.png"));
     frames_revolver.push_back(cargarTextura("revolver_1.png"));
@@ -193,7 +234,6 @@ void cargarFramesRevolver() {
     frames_revolver.push_back(cargarTextura("revolver_5.png"));
     frames_revolver.push_back(cargarTextura("revolver_6.png"));
 }
-
 void cargarFramesCara() {
     frames_cara.push_back(cargarTextura("doomguy_0.png"));  // 0 abierto
     frames_cara.push_back(cargarTextura("doomguy_1.png"));  // 1 cerrado
@@ -259,6 +299,89 @@ void actualizarAnimacionCara(float deltaTime) {
     }
 }
 
+void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
+    if (!enemigo.activo || enemigo.estado == MUERTO) return;
+    enemigo.tiempoAnimacion += deltaTime;
+    int totalFrames = 1;
+    float frameDuration = 0.1f;
+
+    switch (enemigo.estado) {
+        case CAMINAR:
+            totalFrames = frames_enemigo_walk.size();
+            enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
+            break;
+        case ATACAR:
+            totalFrames = frames_enemigo_attack.size();
+            enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
+            break;
+        case MORIR:
+            totalFrames = frames_enemigo_die.size();
+            enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration);
+            if (enemigo.frameActual >= totalFrames) {
+                enemigo.frameActual = totalFrames - 1;
+                enemigo.estado = MUERTO;
+                enemigo.activo = false;
+            }
+            break;
+        default:
+            enemigo.frameActual = 0;
+    }
+}
+
+GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
+    switch (enemigo.estado) {
+        case CAMINAR: return frames_enemigo_walk[enemigo.frameActual];
+        case ATACAR:  return frames_enemigo_attack[enemigo.frameActual];
+        case MORIR:   return frames_enemigo_die[enemigo.frameActual];
+        default:      return 0;
+    }
+}
+
+
+
+
+void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float jugador_z) {
+    if (!enemigo.activo) return;
+    float dx = jugador_x - enemigo.x;
+    float dz = jugador_z - enemigo.z;
+    float angle = atan2(dx, dz) * 180.0f / M_PI;
+    GLuint textura = obtenerTexturaEnemigo(enemigo);
+
+    glPushMatrix();
+        glTranslatef(enemigo.x, enemigo.y, enemigo.z);
+        glRotatef(angle, 0, 1, 0);
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBindTexture(GL_TEXTURE_2D, textura);
+		glColor4f(1, 1, 1, 1); // Importante: alpha=1
+		
+		float escala = 2.50f; // Cambia este valor para ajustar el tamaño
+
+		glBegin(GL_QUADS);
+		    glTexCoord2f(0, 1); glVertex3f(-1 * escala, 0, 0);
+		    glTexCoord2f(1, 1); glVertex3f(1 * escala, 0, 0);
+		    glTexCoord2f(1, 0); glVertex3f(1 * escala, 2 * escala, 0);
+		    glTexCoord2f(0, 0); glVertex3f(-1 * escala, 2 * escala, 0);
+		glEnd();
+				
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+    glPopMatrix();
+}
+
+
+void moverEnemigoHaciaJugador(Enemigo& enemigo, float jugador_x, float jugador_z, float velocidad, float deltaTime) {
+    float dx = jugador_x - enemigo.x;
+    float dz = jugador_z - enemigo.z;
+    float distancia = sqrt(dx*dx + dz*dz);
+    if (distancia > 0.01f) {
+        enemigo.x += (dx / distancia) * velocidad * deltaTime;
+        enemigo.z += (dz / distancia) * velocidad * deltaTime;
+    }
+}
+
+
 void dibujarTextoSombreado(float x, float y, const char* texto, void* fuente, float r, float g, float b) {
     // Sombra
     glColor3f(0,0,0); 
@@ -269,7 +392,6 @@ void dibujarTextoSombreado(float x, float y, const char* texto, void* fuente, fl
     glRasterPos2f(x, y);
     for(const char* c=texto; *c; c++) glutBitmapCharacter(fuente, *c);
 }
-
 void dibujarArmaAnimada() {
     // --- Cambiar a proyección ortográfica 2D ---
     glMatrixMode(GL_PROJECTION);
@@ -314,7 +436,6 @@ void dibujarArmaAnimada() {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
-
 void actualizarAnimacionArma(float deltaTime) {
     if (esta_animando_disparo) {
         arma_tiempo += deltaTime;
@@ -330,13 +451,17 @@ void actualizarAnimacionArma(float deltaTime) {
 }
 
 
+
+
+
+
+
 // Estructura para representar la caja de colisión de un objeto (enemigo)
 struct CajaColision {
     float minX, maxX;
     float minY, maxY;
     float minZ, maxZ;
 };
-
 
 // Función para obtener la caja de colisión de un enemigo (ajusta según tu representación)
 CajaColision obtenerCajaColisionEnemigo(int indice_enemigo) {
@@ -386,6 +511,13 @@ bool rayoIntersectaCaja(float origenX, float origenY, float origenZ,
     return true;
 }
 
+
+
+
+
+
+
+
 void resetearPosicionJugador() {
     // Ejemplo: pon el jugador al inicio del mapa
     posicion_camara_x = 8.0f;
@@ -400,8 +532,6 @@ void resetearPosicionJugador() {
     esta_saltando = false;
     altura_salto = 0.0f;
 }
-
-
 void reproducirSonidoArma(const char* archivo) {
     // Cierra el sonido anterior, si lo hay
     mciSendString("close sonidoArma", NULL, 0, NULL);
@@ -412,7 +542,6 @@ void reproducirSonidoArma(const char* archivo) {
     // Reproduce solo una vez (sin repeat)
     mciSendString("play sonidoArma", NULL, 0, NULL);
 }
-
 void manejarClickMouse(int button, int state, int x, int y) {
     // Permite iniciar el juego con click si aún no ha iniciado
     if (!juego_iniciado && button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
@@ -453,8 +582,6 @@ void manejarClickMouse(int button, int state, int x, int y) {
         }
     }
 }
-
-
 // ==== UTILITARIAS ====
 void dibujarHUD(int municion) {
 
@@ -565,7 +692,6 @@ void dibujarHUD(int municion) {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
-
 void movimientoMouse(int x, int y) {
     static bool primer_vez = true;
     if (primer_vez) {
@@ -601,8 +727,6 @@ void movimientoMouse(int x, int y) {
 
     glutPostRedisplay();
 }
-
-
 bool verificarColision() {
     for (int i = 0; i < 3; ++i) {
         float dx = posicion_camara_x - posicion_enemigo[i][0];
@@ -612,7 +736,6 @@ bool verificarColision() {
     }
     return false;
 }
-
 void dibujarLineaPared(float fijo, bool horizontal) {
     for (float var = -0.0f; var <= 50.0f; var += 2.0f) {
         glPushMatrix();
@@ -624,16 +747,6 @@ void dibujarLineaPared(float fijo, bool horizontal) {
         glPopMatrix();
     }
 }
-
-// Función auxiliar para dibujar un cubo
-void dibujarCubo(float x, float y, float z, float ancho, float alto, float profundidad) {
-    glPushMatrix();
-    glTranslatef(x, y, z);
-    glScalef(ancho, alto, profundidad);
-    glutSolidCube(1.0f);
-    glPopMatrix();
-}
-
 void dibujarTexto(float x, float y, const char* texto) {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
@@ -653,14 +766,12 @@ void dibujarTexto(float x, float y, const char* texto) {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
-
 void dibujar_pared_mapa(float offset_mapa_x, float offset_mapa_y, float escala_mapa, float offset_mundo, float x1, float z1, float x2, float z2) {
     glBegin(GL_LINES);
         glVertex2f(offset_mapa_x + (x1 + offset_mundo) * escala_mapa, offset_mapa_y + (z1 + offset_mundo) * escala_mapa);
         glVertex2f(offset_mapa_x + (x2 + offset_mundo) * escala_mapa, offset_mapa_y + (z2 + offset_mundo) * escala_mapa);
     glEnd();
 }
-
 void dibujarMinimapa(float grosor_pared, float altura_pared) {
     // Cambiar a modo 2D
     glMatrixMode(GL_PROJECTION);
@@ -784,10 +895,10 @@ void dibujarMinimapa(float grosor_pared, float altura_pared) {
     glMatrixMode(GL_MODELVIEW);
 }
 
+
 bool mostrarMenu = false;
 int opcionSeleccionada = -1;
 //===========ILUMINACION
-
 void configurarIluminacion() {
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
@@ -807,14 +918,12 @@ void configurarIluminacion() {
 
     glLightfv(GL_LIGHT0, GL_POSITION, pos_luz);
 }
-
 void dibujarTexto(float x, float y, const std::string& texto) {
     glRasterPos2f(x, y);
     for (size_t i = 0; i < texto.length(); i++) {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, texto[i]);
     }
 }
-
 void onMenu(unsigned char tecla, int x, int y) {
 switch (tecla) {
         case 'm': // Mostrar/Ocultar menú
@@ -839,7 +948,6 @@ switch (tecla) {
     }
     glutPostRedisplay();
 }
-
 void crearMenu() {
     if (!mostrarMenu) return;
 
@@ -883,7 +991,6 @@ void crearMenu() {
     glMatrixMode(GL_MODELVIEW);
     glPopMatrix();
 }
-
 void onMenu_2(int opcion) {
     switch (opcion) {
         case MODO_DIA:
@@ -906,7 +1013,6 @@ void onMenu_2(int opcion) {
     }
     glutPostRedisplay();
 }
-
 void crearMenu_2(void) {
     int menuOpciones, menuAudio, menuPrincipal;
 
@@ -929,9 +1035,7 @@ void crearMenu_2(void) {
     glutAttachMenu(GLUT_RIGHT_BUTTON);
 }
 
-
 // DIBUJO 2D 
-
 void BordeDOOM(){
 	glColor3f(0.0f,0.0f,0.0f);
 	glLineWidth(10.0f);
@@ -1507,7 +1611,6 @@ void MotosierraBorde(){
 }
 
 
-
 void dibujarEscena() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
@@ -1721,16 +1824,39 @@ void dibujarEscena() {
 
         // Pared horizontal en la parte inferior derecha
         glBegin(GL_QUADS); glTexCoord2f(0.0f, 1.0f); glVertex3f(-10.0f, 0.0f, -40.0f); glTexCoord2f(6.0f, 1.0f); glVertex3f(-10.0f + grosor_pared * 6, 0.0f, -40.0f); glTexCoord2f(6.0f, 0.0f); glVertex3f(-10.0f + grosor_pared * 6, altura_pared, -40.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-10.0f, altura_pared, -40.0f); glEnd();
-
         glDisable(GL_TEXTURE_2D);
        	
        	
+       	numEnemigos = 3; // Por ejemplo, 3 enemigos iniciales
+	    enemigos[0].x = -10; enemigos[0].y = 0; enemigos[0].z = 10;
+	    enemigos[0].vida = 100;
+	    enemigos[0].estado = CAMINAR;
+	    enemigos[0].frameActual = 0;
+	    enemigos[0].tiempoAnimacion = 0.0f;
+	    enemigos[0].activo = true;
+	
+	    enemigos[1].x = 0; enemigos[1].y = 0; enemigos[1].z = 20;
+	    enemigos[1].vida = 100;
+	    enemigos[1].estado = CAMINAR;
+	    enemigos[1].frameActual = 0;
+	    enemigos[1].tiempoAnimacion = 0.0f;
+	    enemigos[1].activo = true;
+	
+	    enemigos[2].x = 15; enemigos[2].y = 0; enemigos[2].z = -5;
+	    enemigos[2].vida = 100;
+	    enemigos[2].estado = CAMINAR;
+	    enemigos[2].frameActual = 0;
+	    enemigos[2].tiempoAnimacion = 0.0f;
+	    enemigos[2].activo = true;
+	       	
+	       	
        	
-		// --- DIBUJAR LOS ENEMIGOS ---
-		    glColor3f(1.0f, 0.0f, 0.0f);
-		    for (int i = 0; i < NUM_ENEMIGOS; ++i) {
-		    dibujarCubo(posicion_enemigo[i][0], 1.0f + rebote_enemigo, posicion_enemigo[i][1], 2.0f, 2.0f, 2.0f);
+       	
+		// --- DIBUJAR LOS ENEMIGOS ANIMADOS SPRITE/BILLBOARD ---
+		for (int i = 0; i < numEnemigos; ++i) {
+		    dibujarEnemigoBillboard(enemigos[i], posicion_camara_x, posicion_camara_z);
 		}
+		       	
 		
 		// --- DIBUJAR EL ARMA CERCA DE LA CÁMARA ---
       	dibujarArmaAnimada();
@@ -1795,14 +1921,21 @@ void actualizar(int value) {
 
     // Animación de arma y DOOMGUY
     actualizarAnimacionArma(deltaTime);
-    actualizarAnimacionCara(deltaTime); // <-- ¡AQUÍ!
+    actualizarAnimacionCara(deltaTime); 
 
+	float velocidad = 2.0f; // Unidades por segundo
+	
+	for (int i = 0; i < numEnemigos; ++i) {
+	    moverEnemigoHaciaJugador(enemigos[i], jugador.x, jugador.z, velocidad, deltaTime);
+	}
+	
     glutPostRedisplay();
     glutTimerFunc(20, actualizar, 0);
 }
 
-bool tecla_w = false, tecla_a = false, tecla_s = false, tecla_d = false;
 
+
+bool tecla_w = false, tecla_a = false, tecla_s = false, tecla_d = false;
 
 void manejarTeclas(unsigned char key, int x, int y) 
 {
@@ -1932,7 +2065,6 @@ void inicializarRenderizado() {
     glShadeModel(GL_FLAT);
 
 }
-
 void redimensionar(int w, int h) {
     glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
@@ -1984,16 +2116,14 @@ int main(int argc, char** argv) {
     inicializarRenderizado();
 
     texturaID_suelo = cargarTextura("neutral.tga");
-    texturaHUD = cargarTextura("hud.tga");
-    texturaID_cara_doomguy = cargarTextura("rostro_doomguy.tga");
-    
+    texturaHUD = cargarTextura("hud.tga");    
 
    // Calcula deltaTime como ya lo haces
 	cargarFramesPistola();
 	cargarFramesEscopeta();
 	cargarFramesRevolver();
    	cargarFramesCara();
-
+	cargarFramesEnemigo();
    
     glutPostRedisplay();
     glutDisplayFunc(dibujarEscena);
