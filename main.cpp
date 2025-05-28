@@ -783,10 +783,10 @@ void dibujarMinimapa(float grosor_pared, float altura_pared) {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
+
 bool mostrarMenu = false;
 int opcionSeleccionada = -1;
 //===========ILUMINACION
-
 
 void configurarIluminacion() {
     glEnable(GL_LIGHTING);
