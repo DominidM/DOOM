@@ -9,7 +9,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <mmsystem.h>
-#define MAX_ENEMIGOS 20 // O la cantidad máxima que desees
+#define MAX_ENEMIGOS 20 
 #pragma comment(lib, "winmm.lib")
 #else
 #include <sys/time.h>
@@ -26,6 +26,7 @@ const float VELOCIDAD_SALTO_INICIAL = 0.07f;
 const float GRAVEDAD = 0.01f;
 const float RADIO_JUGADOR = 0.6f;
 const float DISTANCIA_COLISION_CUADRADA = RADIO_JUGADOR * RADIO_JUGADOR;
+const float grosor_pared_exterior = 4.0f;
 
 // ==== CÁMARA ====
 float angulo_yaw = -90.0f; // inicial mirando hacia -Z
@@ -54,6 +55,13 @@ int sonidoActivo = 0;    // ELECCION SONIDO
 bool mostrarMenu = false;
 int opcionSeleccionada = -1;
 
+
+struct Pared {
+    float minX, maxX, minZ, maxZ;
+    // ... otros campos
+};
+
+
 //============MENU 2
 typedef enum {
     MODO_DIA,
@@ -74,6 +82,9 @@ GLuint texturaID_pared;
 GLuint texturaID_techo; 
 GLuint texturaID_suelo;
 GLuint texturaID_cielo;
+GLuint texturaID_fondo;
+GLuint texturaID_paredAlma;
+GLuint texDoomguy;
 GLuint texturaHUD = 0;
 
 struct PosicionJugador {
@@ -92,6 +103,8 @@ struct Enemigo {
     int frameActual;
     float tiempoAnimacion;
     bool activo;
+    int tipo;
+    float escala; // <-- nuevo campo para tamaño individual
 };
 
 // Array de enemigos y contador de enemigos activos:
@@ -121,16 +134,35 @@ GLuint cargarTextura(const char* nombreArchivo) {
 }
 
 
+
+std::vector<Pared> paredes; // o Pared paredes[MAX_PAREDES];
+
+
 //VECTORERS PARA ARMAS
 std::vector<GLuint> frames_pistola;
 std::vector<GLuint> frames_escopeta;
 std::vector<GLuint> frames_revolver;
 
-//Vectores para los frames de animación
-std::vector<GLuint> frames_enemigo_walk;
-std::vector<GLuint> frames_enemigo_attack;
-std::vector<GLuint> frames_enemigo_die;
+//Vector para animacion de cara
 std::vector<GLuint> frames_cara;
+
+
+//Vectores para los frames de animación
+std::vector<GLuint> frames_enemigo0_walk;
+std::vector<GLuint> frames_enemigo0_attack;
+std::vector<GLuint> frames_enemigo0_die;
+
+//Vectores para los frames de animación
+std::vector<GLuint> frames_enemigo1_walk;
+std::vector<GLuint> frames_enemigo1_attack;
+std::vector<GLuint> frames_enemigo1_die;
+
+//Vectores para los frames de animación
+std::vector<GLuint> frames_enemigo2_walk;
+std::vector<GLuint> frames_enemigo2_attack;
+std::vector<GLuint> frames_enemigo2_die;
+
+
 
 
 int cara_frame_actual = 0;
@@ -157,42 +189,110 @@ void detenerMusica() {
 }
 
 
-// FRAMES 
-void cargarFramesEnemigo() {
+// FRAMES ENEMIGOS
+void cargarFramesEnemigo0() {
     // Animación de caminar
-    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_1.png"));
-    frames_enemigo_walk.push_back(cargarTextura("mod1_0.png"));
+    frames_enemigo0_walk.push_back(cargarTextura("mod1_0.png"));
+    frames_enemigo0_walk.push_back(cargarTextura("mod1_0.png"));
+    frames_enemigo0_walk.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo0_walk.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo0_walk.push_back(cargarTextura("mod1_0.png"));
+    frames_enemigo0_walk.push_back(cargarTextura("mod1_0.png"));
+    frames_enemigo0_walk.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo0_walk.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo0_walk.push_back(cargarTextura("mod1_0.png"));
     
     // Animación de atacar
-    frames_enemigo_attack.push_back(cargarTextura("mod1_3.png"));
-    frames_enemigo_attack.push_back(cargarTextura("mod1_3.png"));
-    frames_enemigo_attack.push_back(cargarTextura("mod1_4.png"));
-    frames_enemigo_attack.push_back(cargarTextura("mod1_4.png"));
-    frames_enemigo_attack.push_back(cargarTextura("mod1_5.png"));
-    frames_enemigo_attack.push_back(cargarTextura("mod1_6.png"));
-    frames_enemigo_attack.push_back(cargarTextura("mod1_6.png"));
-    frames_enemigo_attack.push_back(cargarTextura("mod1_6.png"));
-    frames_enemigo_attack.push_back(cargarTextura("mod1_5.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_2.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_3.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_3.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_1.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_2.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_3.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_3.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_3.png"));
+    frames_enemigo0_attack.push_back(cargarTextura("mod1_2.png"));
 
 
     // Animación de morir
-    frames_enemigo_die.push_back(cargarTextura("mod1_7.png"));
-    frames_enemigo_die.push_back(cargarTextura("mod1_8.png"));
-    frames_enemigo_die.push_back(cargarTextura("mod1_9.png"));
-    frames_enemigo_die.push_back(cargarTextura("mod1_10.png"));
-    frames_enemigo_die.push_back(cargarTextura("mod1_11.png"));
-    frames_enemigo_die.push_back(cargarTextura("mod1_12.png"));
-    frames_enemigo_die.push_back(cargarTextura("mod1_13.png"));
-    frames_enemigo_die.push_back(cargarTextura("mod1_14.png"));
-    frames_enemigo_die.push_back(cargarTextura("mod1_14.png"));
+    frames_enemigo0_die.push_back(cargarTextura("mod1_7.png"));
+    frames_enemigo0_die.push_back(cargarTextura("mod1_8.png"));
+    frames_enemigo0_die.push_back(cargarTextura("mod1_9.png"));
+    frames_enemigo0_die.push_back(cargarTextura("mod1_10.png"));
+    frames_enemigo0_die.push_back(cargarTextura("mod1_11.png"));
+    frames_enemigo0_die.push_back(cargarTextura("mod1_12.png"));
+    frames_enemigo0_die.push_back(cargarTextura("mod1_13.png"));
+    frames_enemigo0_die.push_back(cargarTextura("mod1_14.png"));
+    frames_enemigo0_die.push_back(cargarTextura("mod1_14.png"));
 }
+void cargarFramesEnemigo1() {
+    // Animación de caminar
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_5.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_1.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_3.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_4.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_5.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_1.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_3.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_4.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_5.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_1.png"));
+	frames_enemigo1_walk.push_back(cargarTextura("mod2_3.png"));
+    frames_enemigo1_walk.push_back(cargarTextura("mod2_5.png"));
+	frames_enemigo1_walk.push_back(cargarTextura("mod2_4.png"));
+    
+    // Animación de atacar
+    frames_enemigo1_attack.push_back(cargarTextura("mod2_12.png"));
+    frames_enemigo1_attack.push_back(cargarTextura("mod2_13.png"));
+    frames_enemigo1_attack.push_back(cargarTextura("mod2_14.png"));
+    frames_enemigo1_attack.push_back(cargarTextura("mod2_15.png"));
+    frames_enemigo1_attack.push_back(cargarTextura("mod2_16.png"));
+    frames_enemigo1_attack.push_back(cargarTextura("mod2_17.png"));
+
+    // Animación de morir
+    frames_enemigo1_die.push_back(cargarTextura("mod2_18.png"));
+    frames_enemigo1_die.push_back(cargarTextura("mod2_19.png"));
+    frames_enemigo1_die.push_back(cargarTextura("mod2_20.png"));
+    frames_enemigo1_die.push_back(cargarTextura("mod2_21.png"));
+    frames_enemigo1_die.push_back(cargarTextura("mod2_22.png"));
+    frames_enemigo1_die.push_back(cargarTextura("mod2_23.png"));
+}
+void cargarFramesEnemigo2() {
+    // Animación de caminar
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_0.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_1.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_2.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_3.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_0.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_1.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_2.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_3.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_0.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_1.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_2.png"));
+    frames_enemigo2_walk.push_back(cargarTextura("mod3_3.png"));
+
+    // Animación de atacar
+    frames_enemigo2_attack.push_back(cargarTextura("mod3_4.png"));
+    frames_enemigo2_attack.push_back(cargarTextura("mod3_5.png"));
+    frames_enemigo2_attack.push_back(cargarTextura("mod3_6.png"));
+    frames_enemigo2_attack.push_back(cargarTextura("mod3_7.png"));
+    frames_enemigo2_attack.push_back(cargarTextura("mod3_5.png"));
+    frames_enemigo2_attack.push_back(cargarTextura("mod3_6.png"));
+
+    // Animación de morir
+    frames_enemigo2_die.push_back(cargarTextura("mod3_8.png"));
+    frames_enemigo2_die.push_back(cargarTextura("mod3_9.png"));
+    frames_enemigo2_die.push_back(cargarTextura("mod3_10.png"));
+    frames_enemigo2_die.push_back(cargarTextura("mod3_11.png"));
+    frames_enemigo2_die.push_back(cargarTextura("mod3_12.png"));
+    frames_enemigo2_die.push_back(cargarTextura("mod3_15.png"));
+}
+
+
+
+
 void cargarFramesPistola() {
     frames_pistola.push_back(cargarTextura("pistola_0.png"));
     frames_pistola.push_back(cargarTextura("pistola_1.png"));
@@ -274,14 +374,8 @@ void cargarFramesCara() {
 
 // ACTUALIZAR ANIMACIONES 
 
-GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
-    switch (enemigo.estado) {
-        case CAMINAR: return frames_enemigo_walk[enemigo.frameActual];
-        case ATACAR:  return frames_enemigo_attack[enemigo.frameActual];
-        case MORIR:   return frames_enemigo_die[enemigo.frameActual];
-        default:      return 0;
-    }
-}
+
+
 void actualizarAnimacionCara(float deltaTime) {
     cara_tiempo += deltaTime;
     if (cara_tiempo >= cara_duracion_frame) {
@@ -292,6 +386,38 @@ void actualizarAnimacionCara(float deltaTime) {
         }
     }
 }
+
+
+GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
+    switch (enemigo.tipo) {
+        case 0:
+            switch (enemigo.estado) {
+                case CAMINAR: return frames_enemigo0_walk[enemigo.frameActual];
+                case ATACAR:  return frames_enemigo0_attack[enemigo.frameActual];
+                case MORIR:   return frames_enemigo0_die[enemigo.frameActual];
+                default:      return 0;
+            }
+        case 1:
+            switch (enemigo.estado) {
+                case CAMINAR: return frames_enemigo1_walk[enemigo.frameActual];
+                case ATACAR:  return frames_enemigo1_attack[enemigo.frameActual];
+                case MORIR:   return frames_enemigo1_die[enemigo.frameActual];
+                default:      return 0;
+            }
+        case 2:
+            switch (enemigo.estado) {
+                case CAMINAR: return frames_enemigo2_walk[enemigo.frameActual];
+                case ATACAR:  return frames_enemigo2_attack[enemigo.frameActual];
+                case MORIR:   return frames_enemigo2_die[enemigo.frameActual];
+                default:      return 0;
+            }
+        default:
+            return 0;
+    }
+}
+
+
+
 void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_z) {
     // Si ya está muerto, no hace nada
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
@@ -317,34 +443,92 @@ void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_z)
         enemigo.estado = CAMINAR;
     }
 }
+
+
 void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
     enemigo.tiempoAnimacion += deltaTime;
     int totalFrames = 1;
     float frameDuration = 0.1f;
 
-    switch (enemigo.estado) {
-        case CAMINAR:
-            totalFrames = frames_enemigo_walk.size();
-            enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
-            break;
-        case ATACAR:
-            totalFrames = frames_enemigo_attack.size();
-            enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
-            break;
-        case MORIR:
-            totalFrames = frames_enemigo_die.size();
-            enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration);
-            if (enemigo.frameActual >= totalFrames) {
-                enemigo.frameActual = totalFrames - 1;
-                enemigo.estado = MUERTO;
-                enemigo.activo = false;
+    switch (enemigo.tipo) {
+        case 0: // Enemigo tipo 0
+            switch (enemigo.estado) {
+                case CAMINAR:
+                    totalFrames = frames_enemigo0_walk.size();
+                    enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
+                    break;
+                case ATACAR:
+                    totalFrames = frames_enemigo0_attack.size();
+                    enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
+                    break;
+                case MORIR:
+                    totalFrames = frames_enemigo0_die.size();
+                    enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration);
+                    if (enemigo.frameActual >= totalFrames) {
+                        enemigo.frameActual = totalFrames - 1;
+                        enemigo.estado = MUERTO;
+                        enemigo.activo = false;
+                    }
+                    break;
+                default:
+                    enemigo.frameActual = 0;
             }
             break;
-        default:
+        case 1: // Enemigo tipo 1
+            switch (enemigo.estado) {
+                case CAMINAR:
+                    totalFrames = frames_enemigo1_walk.size();
+                    enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
+                    break;
+                case ATACAR:
+                    totalFrames = frames_enemigo1_attack.size();
+                    enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
+                    break;
+                case MORIR:
+                    totalFrames = frames_enemigo1_die.size();
+                    enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration);
+                    if (enemigo.frameActual >= totalFrames) {
+                        enemigo.frameActual = totalFrames - 1;
+                        enemigo.estado = MUERTO;
+                        enemigo.activo = false;
+                    }
+                    break;
+                default:
+                    enemigo.frameActual = 0;
+            }
+            break;
+        case 2: // Enemigo tipo 2
+            switch (enemigo.estado) {
+                case CAMINAR:
+                    totalFrames = frames_enemigo2_walk.size();
+                    enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
+                    break;
+                case ATACAR:
+                    totalFrames = frames_enemigo2_attack.size();
+                    enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration) % totalFrames;
+                    break;
+                case MORIR:
+                    totalFrames = frames_enemigo2_die.size();
+                    enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration);
+                    if (enemigo.frameActual >= totalFrames) {
+                        enemigo.frameActual = totalFrames - 1;
+                        enemigo.estado = MUERTO;
+                        enemigo.activo = false;
+                    }
+                    break;
+                default:
+                    enemigo.frameActual = 0;
+            }
+            break;
+        default: // Por si llega un tipo desconocido
             enemigo.frameActual = 0;
     }
 }
+
+
+
+
 void dibujarTextoSombreado(float x, float y, const char* texto, void* fuente, float r, float g, float b) {
     // Sombra
     glColor3f(0,0,0); 
@@ -367,17 +551,16 @@ void dibujarArmaAnimada() {
     glLoadIdentity();
 
     // --- Dibuja el arma centrada en la parte inferior de la pantalla ---
-    float arma_ancho = 280; // Cambia esto según el tamaño real de tu imagen
-    float arma_alto  = 280; // Cambia esto según el tamaño real de tu imagen
+    float arma_ancho = 280;
+    float arma_alto  = 280;
     float x = (ancho_pantalla - arma_ancho) / 2.0f;
     float y = 100; // parte inferior
             
-    glDisable(GL_LIGHTING);        // Desactiva la iluminación global
+    glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_TEXTURE_2D);
 
-    // ¡OJO! Usa el puntero correcto y verifica que no esté vacío
     if (arma_frames_actual && !arma_frames_actual->empty()) {
         GLuint textura = (*arma_frames_actual)[arma_frame_actual];
         glBindTexture(GL_TEXTURE_2D, textura);
@@ -393,12 +576,30 @@ void dibujarArmaAnimada() {
     glDisable(GL_TEXTURE_2D);
     glDisable(GL_BLEND);
 
+    // --- DIBUJAR MIRA EN EL CENTRO ---
+    glDisable(GL_LIGHTING);
+    glColor3f(0.0, 1.0, 0.0); // Blanco
+    float centro_x = ancho_pantalla / 2.0f;
+    float centro_y = alto_pantalla / 2.0f;
+    float largo = 10.0f;
+    glLineWidth(2.0f);
+    glBegin(GL_LINES);
+        glVertex2f(centro_x - largo, centro_y);
+        glVertex2f(centro_x + largo, centro_y);
+        glVertex2f(centro_x, centro_y - largo);
+        glVertex2f(centro_x, centro_y + largo);
+    glEnd();
+    glLineWidth(1.0f);
+
     // --- Restaurar matrices ---
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
+
+
+
 void actualizarAnimacionArma(float deltaTime) {
     if (esta_animando_disparo) {
         arma_tiempo += deltaTime;
@@ -644,14 +845,10 @@ void dibujarTexto(float x, float y, const char* texto) {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
-void dibujar_pared_mapa(float offset_mapa_x, float offset_mapa_y, float escala_mapa, float offset_mundo, float x1, float z1, float x2, float z2) {
-    glBegin(GL_LINES);
-        glVertex2f(offset_mapa_x + (x1 + offset_mundo) * escala_mapa, offset_mapa_y + (z1 + offset_mundo) * escala_mapa);
-        glVertex2f(offset_mapa_x + (x2 + offset_mundo) * escala_mapa, offset_mapa_y + (z2 + offset_mundo) * escala_mapa);
-    glEnd();
-}
-void dibujarMinimapa(float grosor_pared, float altura_pared) {
-    // Cambiar a modo 2D
+
+
+void dibujarMinimapa(float grosor_pared, float altura_pared, GLuint texDoomguy) {
+    // --- 2D Setup ---
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
@@ -661,106 +858,103 @@ void dibujarMinimapa(float grosor_pared, float altura_pared) {
     glPushMatrix();
     glLoadIdentity();
 
-    // Definir el tamaño y la posición del minimapa
-    float tamano_mapa = 200.0f;
+    float tamano_mapa = 120.0f;
     float margen_derecho = 30.0f;
     float margen_superior = 30.0f;
-    float posicion_mapa_x = ancho_pantalla - tamano_mapa - margen_derecho;
-    float posicion_mapa_y = alto_pantalla - tamano_mapa - margen_superior;
+    float cx = ancho_pantalla - tamano_mapa/2 - margen_derecho;
+    float cy = alto_pantalla - tamano_mapa/2 - margen_superior;
 
-    // Dibujar el fondo del minimapa con un borde
-    glColor3f(0.1f, 0.1f, 0.1f);
+    // --- Fondo exterior oscuro (zona no explorable) ---
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4f(0.02f, 0.02f, 0.04f, 0.80f); // Muy oscuro
     glBegin(GL_QUADS);
-        glVertex2f(posicion_mapa_x - 2.0f, posicion_mapa_y - 2.0f);
-        glVertex2f(posicion_mapa_x + tamano_mapa + 2.0f, posicion_mapa_y - 2.0f);
-        glVertex2f(posicion_mapa_x + tamano_mapa + 2.0f, posicion_mapa_y + tamano_mapa + 2.0f);
-        glVertex2f(posicion_mapa_x - 2.0f, posicion_mapa_y + tamano_mapa + 2.0f);
-    glEnd();
-    glColor3f(0.2f, 0.2f, 0.2f);
-    glBegin(GL_QUADS);
-        glVertex2f(posicion_mapa_x, posicion_mapa_y);
-        glVertex2f(posicion_mapa_x + tamano_mapa, posicion_mapa_y);
-        glVertex2f(posicion_mapa_x + tamano_mapa, posicion_mapa_y + tamano_mapa);
-        glVertex2f(posicion_mapa_x, posicion_mapa_y + tamano_mapa);
+        glVertex2f(cx - tamano_mapa/2 - 10, cy - tamano_mapa/2 - 10);
+        glVertex2f(cx + tamano_mapa/2 + 10, cy - tamano_mapa/2 - 10);
+        glVertex2f(cx + tamano_mapa/2 + 10, cy + tamano_mapa/2 + 10);
+        glVertex2f(cx - tamano_mapa/2 - 10, cy + tamano_mapa/2 + 10);
     glEnd();
 
-    // Escalar las coordenadas del mundo al espacio del minimapa
-    float escala_mapa = tamano_mapa / 100.0f; // Asumiendo que tu mundo tiene ~100x100 unidades
-    float offset_mapa_x = posicion_mapa_x + tamano_mapa / 2.0f;
-    float offset_mapa_y = posicion_mapa_y + tamano_mapa / 2.0f;
-    float offset_mundo = 0.0f; // Si tu laberinto no está centrado en (0,0), ajusta esto
-
-    // Dibujar las paredes del laberinto en el minimapa como líneas blancas
-    glColor3f(1.0f, 1.0f, 1.0f);
-    float grosor_pared_mapa = grosor_pared * escala_mapa;
-    float altura_pared_mapa = altura_pared * escala_mapa; // Aunque la altura no es tan relevante en 2D
-
-    for (float i = -50.0f; i <= 50.0f; i += grosor_pared) {
-        // Pared Norte
-        glBegin(GL_LINES);
-            glVertex2f(offset_mapa_x + (i + offset_mundo) * escala_mapa, offset_mapa_y + (-50.0f + offset_mundo) * escala_mapa);
-            glVertex2f(offset_mapa_x + (i + grosor_pared + offset_mundo) * escala_mapa, offset_mapa_y + (-50.0f + offset_mundo) * escala_mapa);
-        glEnd();
-        // Pared Sur
-        glBegin(GL_LINES);
-            glVertex2f(offset_mapa_x + (i + offset_mundo) * escala_mapa, offset_mapa_y + (50.0f + offset_mundo) * escala_mapa);
-            glVertex2f(offset_mapa_x + (i + grosor_pared + offset_mundo) * escala_mapa, offset_mapa_y + (50.0f + offset_mundo) * escala_mapa);
-        glEnd();
-        // Pared Oeste
-        glBegin(GL_LINES);
-            glVertex2f(offset_mapa_x + (-50.0f + offset_mundo) * escala_mapa, offset_mapa_y + (i + offset_mundo) * escala_mapa);
-            glVertex2f(offset_mapa_x + (-50.0f + offset_mundo) * escala_mapa, offset_mapa_y + (i + grosor_pared + offset_mundo) * escala_mapa);
-        glEnd();
-        // Pared Este
-        glBegin(GL_LINES);
-            glVertex2f(offset_mapa_x + (50.0f + offset_mundo) * escala_mapa, offset_mapa_y + (i + offset_mundo) * escala_mapa);
-            glVertex2f(offset_mapa_x + (50.0f + offset_mundo) * escala_mapa, offset_mapa_y + (i + grosor_pared + offset_mundo) * escala_mapa);
-        glEnd();
-    }
-
-    // Dibujar las paredes interiores (basadas en tu último diseño)
-    glColor3f(1.0f, 1.0f, 1.0f);
-    
-    // Pared vertical izquierda
-    for (float z = -40.0f; z <= 40.0f; z += 10.0f) {
-        dibujar_pared_mapa(offset_mapa_x, offset_mapa_y, escala_mapa, offset_mundo, -40.0f, z, -40.0f, z + grosor_pared);
-    }
-	
-	// Paredes horizontales desde la izquierda
-    dibujar_pared_mapa(offset_mapa_x, offset_mapa_y, escala_mapa, offset_mundo, -40.0f, 30.0f, -40.0f + grosor_pared * 5, 30.0f);
-    dibujar_pared_mapa(offset_mapa_x, offset_mapa_y, escala_mapa, offset_mundo, -40.0f, 10.0f, -40.0f + grosor_pared * 3, 10.0f);
-    dibujar_pared_mapa(offset_mapa_x, offset_mapa_y, escala_mapa, offset_mundo, -40.0f, -10.0f, -40.0f + grosor_pared * 4, -10.0f);
-    dibujar_pared_mapa(offset_mapa_x, offset_mapa_y, escala_mapa, offset_mundo, -40.0f, -30.0f, -40.0f + grosor_pared * 2, -30.0f);
-    // Pared vertical de conexión
-    for (float y = -20.0f; y <= 20.0f; y += 10.0f) {
-        dibujar_pared_mapa(offset_mapa_x, offset_mapa_y, escala_mapa, offset_mundo, -20.0f, y, -20.0f, y + grosor_pared);
-    }
-	
-    // Pared horizontal inferior derecha
-    dibujar_pared_mapa(offset_mapa_x, offset_mapa_y, escala_mapa, offset_mundo, -10.0f, -40.0f, -10.0f + grosor_pared * 6, -40.0f);
-
-
-    // Dibujar al jugador como un punto amarillo
-    glColor3f(1.0f, 1.0f, 0.0f);
-    float jugador_mapa_x = offset_mapa_x + posicion_camara_x * escala_mapa;
-    float jugador_mapa_y = offset_mapa_y + posicion_camara_z * escala_mapa;
-    float tamano_jugador = 6.0f;
+    // --- Fondo interior (área jugable clara) ---
+    glColor4f(0.11f, 0.11f, 0.19f, 0.60f); // Azul oscuro, semitransparente
     glBegin(GL_QUADS);
-        glVertex2f(jugador_mapa_x - tamano_jugador / 2, jugador_mapa_y - tamano_jugador / 2);
-        glVertex2f(jugador_mapa_x + tamano_jugador / 2, jugador_mapa_y - tamano_jugador / 2);
-        glVertex2f(jugador_mapa_x + tamano_jugador / 2, jugador_mapa_y + tamano_jugador / 2);
-        glVertex2f(jugador_mapa_x - tamano_jugador / 2, jugador_mapa_y + tamano_jugador / 2);
+        glVertex2f(cx - tamano_mapa/2, cy - tamano_mapa/2);
+        glVertex2f(cx + tamano_mapa/2, cy - tamano_mapa/2);
+        glVertex2f(cx + tamano_mapa/2, cy + tamano_mapa/2);
+        glVertex2f(cx - tamano_mapa/2, cy + tamano_mapa/2);
     glEnd();
 
+    // --- Borde cuadrado azul ---
+    glColor3f(0.0f, 0.5f, 1.0f);
+    glLineWidth(2.5f);
+    glBegin(GL_LINE_LOOP);
+        glVertex2f(cx - tamano_mapa/2, cy - tamano_mapa/2);
+        glVertex2f(cx + tamano_mapa/2, cy - tamano_mapa/2);
+        glVertex2f(cx + tamano_mapa/2, cy + tamano_mapa/2);
+        glVertex2f(cx - tamano_mapa/2, cy + tamano_mapa/2);
+    glEnd();
+    glLineWidth(1.0f);
 
+    // --- Letras cardinales ---
+    void* fuente = GLUT_BITMAP_HELVETICA_18;
+    glColor3f(0.3f, 0.7f, 1.0f);
+    glRasterPos2f(cx - 6, cy + tamano_mapa/2 - 16);
+    glutBitmapCharacter(fuente, 'N');
+    glRasterPos2f(cx - 6, cy - tamano_mapa/2 + 6);
+    glutBitmapCharacter(fuente, 'S');
+    glRasterPos2f(cx + tamano_mapa/2 - 12, cy - 6);
+    glutBitmapCharacter(fuente, 'E');
+    glRasterPos2f(cx - tamano_mapa/2 + 4, cy - 6);
+    glutBitmapCharacter(fuente, 'W');
 
-    // Restaurar matrices
+    // --- Escalado de mundo a minimapa ---
+    float escala_mapa = tamano_mapa / 100.0f;
+
+    // --- Dibuja paredes (ajusta tu lógica aquí, ejemplo simple) ---
+    glColor3f(0.82f, 0.94f, 1.0f); // Azul claro
+    // ... tu código de paredes usando dibujar_pared_mapa o similar ...
+
+    // --- Dibuja enemigos como puntos rojos ---
+    for (int i = 0; i < numEnemigos; ++i) {
+        if (!enemigos[i].activo) continue;
+        float ex = cx + enemigos[i].x * escala_mapa;
+        float ey = cy + enemigos[i].z * escala_mapa;
+        float tam = 6.0f * enemigos[i].escala;
+        // Solo dibuja si está dentro del cuadro del minimapa:
+        if (ex >= cx - tamano_mapa/2 && ex <= cx + tamano_mapa/2 && ey >= cy - tamano_mapa/2 && ey <= cy + tamano_mapa/2) {
+            glColor3f(1.0f, 0.0f, 0.0f);
+            glBegin(GL_QUADS);
+            glVertex2f(ex - tam / 2, ey - tam / 2);
+            glVertex2f(ex + tam / 2, ey - tam / 2);
+            glVertex2f(ex + tam / 2, ey + tam / 2);
+            glVertex2f(ex - tam / 2, ey + tam / 2);
+            glEnd();
+        }
+    }
+
+    // --- Dibuja el doomguy como textura en el centro ---
+    float px = cx + posicion_camara_x * escala_mapa;
+    float py = cy + posicion_camara_z * escala_mapa;
+    float icono = 18.0f;
+    if (px >= cx - tamano_mapa/2 && px <= cx + tamano_mapa/2 && py >= cy - tamano_mapa/2 && py <= cy + tamano_mapa/2) {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, texDoomguy);
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glBegin(GL_QUADS);
+            glTexCoord2f(0, 1); glVertex2f(px - icono/2, py - icono/2);
+            glTexCoord2f(1, 1); glVertex2f(px + icono/2, py - icono/2);
+            glTexCoord2f(1, 0); glVertex2f(px + icono/2, py + icono/2);
+            glTexCoord2f(0, 0); glVertex2f(px - icono/2, py + icono/2);
+        glEnd();
+        glDisable(GL_TEXTURE_2D);
+    }
+
+    // --- Restaurar matrices ---
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
-
 
 //===========ILUMINACION
 void configurarIluminacion() {
@@ -1484,15 +1678,31 @@ void moverEnemigoHaciaJugador(Enemigo& enemigo, float jugador_x, float jugador_z
         enemigo.z += (dz / distancia) * velocidad * deltaTime;
     }
 }
+
 void inicializarEnemigos() {
     enemigos[0].x = -10; enemigos[0].y = 0; enemigos[0].z = 10;
     enemigos[0].vida = 100; enemigos[0].estado = CAMINAR; enemigos[0].activo = true;
+    enemigos[0].tipo = 0;
+    enemigos[0].frameActual = 0;
+    enemigos[0].tiempoAnimacion = 0.0f;
+    enemigos[0].escala = 2.5f; 
+
     enemigos[1].x = 0; enemigos[1].y = 0; enemigos[1].z = 20;
     enemigos[1].vida = 100; enemigos[1].estado = CAMINAR; enemigos[1].activo = true;
+    enemigos[1].tipo = 1;
+    enemigos[1].frameActual = 0;
+    enemigos[1].tiempoAnimacion = 0.0f;
+    enemigos[1].escala = 1.9f; 
+
     enemigos[2].x = 15; enemigos[2].y = 0; enemigos[2].z = -5;
     enemigos[2].vida = 100; enemigos[2].estado = CAMINAR; enemigos[2].activo = true;
-    // ... inicializa los demás campos según tu struct Enemigo
+    enemigos[2].tipo = 2;
+    enemigos[2].frameActual = 0;
+    enemigos[2].tiempoAnimacion = 0.0f;
+    enemigos[2].escala = 1.7f; 
+    
 }
+
 void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float jugador_z) {
     if (!enemigo.activo) return;
     float dx = jugador_x - enemigo.x;
@@ -1503,26 +1713,31 @@ void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float juga
     glPushMatrix();
         glTranslatef(enemigo.x, enemigo.y, enemigo.z);
         glRotatef(angle, 0, 1, 0);
-		glEnable(GL_TEXTURE_2D);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glBindTexture(GL_TEXTURE_2D, textura);
-		glColor4f(1, 1, 1, 1); // Importante: alpha=1
-		
-		float escala = 2.50f; // Cambia este valor para ajustar el tamaño
 
-		glBegin(GL_QUADS);
-		    glTexCoord2f(0, 1); glVertex3f(-1 * escala, 0, 0);
-		    glTexCoord2f(1, 1); glVertex3f(1 * escala, 0, 0);
-		    glTexCoord2f(1, 0); glVertex3f(1 * escala, 2 * escala, 0);
-		    glTexCoord2f(0, 0); glVertex3f(-1 * escala, 2 * escala, 0);
-		glEnd();
-				
-		glDisable(GL_BLEND);
-		glDisable(GL_TEXTURE_2D);
+        glEnable(GL_TEXTURE_2D);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        glEnable(GL_ALPHA_TEST);
+        glAlphaFunc(GL_GREATER, 0.1f);
+
+        glBindTexture(GL_TEXTURE_2D, textura);
+        glColor4f(1, 1, 1, 1);
+
+        float escala = enemigo.escala;
+
+        glBegin(GL_QUADS);
+            glTexCoord2f(0, 1); glVertex3f(-1 * escala, 0, 0);
+            glTexCoord2f(1, 1); glVertex3f(1 * escala, 0, 0);
+            glTexCoord2f(1, 0); glVertex3f(1 * escala, 2 * escala, 0);
+            glTexCoord2f(0, 0); glVertex3f(-1 * escala, 2 * escala, 0);
+        glEnd();
+
+        glDisable(GL_ALPHA_TEST);
+        glDisable(GL_BLEND);
+        glDisable(GL_TEXTURE_2D);
     glPopMatrix();
 }
-
 
 
 
@@ -1644,6 +1859,9 @@ void manejarTeclasUp(unsigned char key, int x, int y)
     }
 }
 
+
+
+
 // Llama a esto en tu ciclo de actualización (timer o idle)
 void actualizarMovimientoJugador(float deltaTime)
 {
@@ -1660,36 +1878,50 @@ void actualizarMovimientoJugador(float deltaTime)
         derechaX /= magnitud;
         derechaZ /= magnitud;
     }
-
+    
+    
+    float nuevo_x = posicion_camara_x;
+    float nuevo_z = posicion_camara_z;
     bool movimiento = false;
 
     if (tecla_w) {
-        posicion_camara_x += frente_x * velocidad_movimiento;
-        posicion_camara_z += frente_z * velocidad_movimiento;
+         nuevo_x += frente_x * velocidad_movimiento;
+        nuevo_z += frente_z * velocidad_movimiento;
         movimiento = true;
     }
     if (tecla_s) {
-        posicion_camara_x -= frente_x * velocidad_movimiento;
-        posicion_camara_z -= frente_z * velocidad_movimiento;
+        nuevo_x -= frente_x * velocidad_movimiento;
+        nuevo_z -= frente_z * velocidad_movimiento;
         movimiento = true;
     }
     if (tecla_a) {
-        posicion_camara_x -= derechaX * velocidad_movimiento;
-        posicion_camara_z -= derechaZ * velocidad_movimiento;
+        nuevo_x -= derechaX * velocidad_movimiento;
+        nuevo_z -= derechaZ * velocidad_movimiento;
         movimiento = true;
     }
     if (tecla_d) {
-        posicion_camara_x += derechaX * velocidad_movimiento;
-        posicion_camara_z += derechaZ * velocidad_movimiento;
+        nuevo_x += derechaX * velocidad_movimiento;
+        nuevo_z += derechaZ * velocidad_movimiento;
         movimiento = true;
     }
+    
+	// --- COLISIÓN CON PAREDES EXTERIORES ---
+    float radio = 1.0f;              // radio del jugador
+	float margen = grosor_pared_exterior + RADIO_JUGADOR;
+	float minX = -50.0f + RADIO_JUGADOR;
+	float maxX =  50.0f - RADIO_JUGADOR;
+	float minZ = -50.0f + RADIO_JUGADOR;
+	float maxZ =  50.0f - RADIO_JUGADOR;
+		
+	if (nuevo_x >= minX && nuevo_x <= maxX && nuevo_z >= minZ && nuevo_z <= maxZ) {
+	    posicion_camara_x = nuevo_x;
+	    posicion_camara_z = nuevo_z;
+	    jugador.x = nuevo_x;
+	    jugador.z = nuevo_z;
+	}
+	}
 
-    // Sincroniza lógica de jugador
-    if (movimiento) {
-        jugador.x = posicion_camara_x;
-        jugador.z = posicion_camara_z;
-    }
-}
+
 
 void actualizar(int value) {
     // Calcula deltaTime seguro
@@ -1860,22 +2092,12 @@ void dibujarEscena() {
 
         glDisable(GL_TEXTURE_2D);
 
-		// --- DIBUJAR EL TECHO ---
-        glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para la textura
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, texturaID_techo); // Enlaza la textura
 
-        glBegin(GL_QUADS);
-            glTexCoord2f(0.0f, 0.0f); glVertex3f(-50.0f, 5.0f, -50.0f);
-            glTexCoord2f(10.0f, 0.0f); glVertex3f(50.0f, 5.0f, -50.0f);
-            glTexCoord2f(10.0f, 10.0f); glVertex3f(50.0f, 5.0f, 50.0f);
-            glTexCoord2f(0.0f, 10.0f); glVertex3f(-50.0f, 5.0f, 50.0f);
-        glEnd();
-
-        glDisable(GL_TEXTURE_2D);		     
 		
-		float altura_pared = 4.70f; // Altura de las paredes
-        float grosor_pared = 3.0f;
+		
+		float altura_pared = 4.90f; // Altura de las paredes
+        float grosor_pared = 10.0f;
+        
 	  // Paredes exteriores
         glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para la textura
         glEnable(GL_TEXTURE_2D);
@@ -1917,9 +2139,54 @@ void dibujarEscena() {
         }
 
         glDisable(GL_TEXTURE_2D);
+        
+        
 		
-		// --- FAROLILLOS EN LAS ESQUINAS ---
+		// Parámetros del fondo
+		float fondo_ancho = 180.0f;  // Hazlo grande
+		float fondo_alto  = 80.0f;
+		float fondo_dist  = 90.0f;  // Lejos del centro
+		
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, texturaID_fondo);
+		
+		// Pared Norte (normal)
+		glBegin(GL_QUADS);
+		    glTexCoord2f(0, 1); glVertex3f(-fondo_ancho/2,    0, -fondo_dist);
+		    glTexCoord2f(1, 1); glVertex3f( fondo_ancho/2,    0, -fondo_dist);
+		    glTexCoord2f(1, 0); glVertex3f( fondo_ancho/2, fondo_alto, -fondo_dist);
+		    glTexCoord2f(0, 0); glVertex3f(-fondo_ancho/2, fondo_alto, -fondo_dist);
+		glEnd();
+		
+		// Pared Sur (espejada horizontal)
+		glBegin(GL_QUADS);
+		    glTexCoord2f(0, 1); glVertex3f(-fondo_ancho/2,    0, fondo_dist);
+		    glTexCoord2f(1, 1); glVertex3f( fondo_ancho/2,    0, fondo_dist);
+		    glTexCoord2f(1, 0); glVertex3f( fondo_ancho/2, fondo_alto, fondo_dist);
+		    glTexCoord2f(0, 0); glVertex3f(-fondo_ancho/2, fondo_alto, fondo_dist);
+		glEnd();
+		
+		// Pared Oeste (espejada vertical)
+		glBegin(GL_QUADS);
+		    glTexCoord2f(0, 0); glVertex3f(-fondo_dist, fondo_alto,  fondo_ancho/2);
+		    glTexCoord2f(1, 0); glVertex3f(-fondo_dist, fondo_alto, -fondo_ancho/2);
+		    glTexCoord2f(1, 1); glVertex3f(-fondo_dist,    0,      -fondo_ancho/2);
+		    glTexCoord2f(0, 1); glVertex3f(-fondo_dist,    0,       fondo_ancho/2);
+		glEnd();
+		
+		// Pared Este (espejada horizontal y vertical)
+		glBegin(GL_QUADS);
+		    glTexCoord2f(0, 0); glVertex3f(fondo_dist, fondo_alto,  fondo_ancho/2);
+		    glTexCoord2f(1, 0); glVertex3f(fondo_dist, fondo_alto, -fondo_ancho/2);
+		    glTexCoord2f(1, 1); glVertex3f(fondo_dist,    0,      -fondo_ancho/2);
+		    glTexCoord2f(0, 1); glVertex3f(fondo_dist,    0,       fondo_ancho/2);
+		glEnd();
+		
 		glDisable(GL_TEXTURE_2D);
+		
+		
+		
+
 		float farol_altura = 5.2f;
 		float farol_radio = 0.4f;
 		float farol_color[4][3] = {
@@ -1948,28 +2215,85 @@ void dibujarEscena() {
 		    glPopMatrix();
 		}
 		
-		// --- PAREDES INTERIORES (color variado y efecto desgaste) ---
+		
+		
+		
+		
+		
+		
+		
+			// --- PILARES INTERIORES (columnas gruesas cuboides) ---
 		glEnable(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, texturaID_pared);
-		// Puedes alternar colores para cada bloque o con ruido
+		GLuint texturaID_pilar = cargarTextura("alma.tga"); // Usa la misma textura o una diferente
+		glBindTexture(GL_TEXTURE_2D, texturaID_pilar);
+		
 		srand(42);
-		for (int pared = 0; pared < 20; pared++) {
-		    float r = 0.88f + 0.10f * (rand() % 2); // blanco o gris muy suave
+		float lado = 4.0f;           // Grosor de la columna
+		float altura = altura_pared; // Altura del pilar 
+		
+		// Dibuja 20 columnas en posiciones aleatorias
+		for (int i = 0; i < 20; ++i) {
+		    float r = 0.88f + 0.10f * (rand() % 2);
 		    float g = 0.88f + 0.10f * (rand() % 2);
 		    float b = 0.86f + 0.12f * (rand() % 3);
 		    glColor3f(r, g, b);
 		
-		    // Ejemplo: usa tus mismas coordenadas de paredes interiores aquí,
-		    // o pon aleatoriamente algunas internas llamativas:
+		    // Posición aleatoria para cada pilar
 		    float x = (rand() % 70) - 35.0f;
 		    float z = (rand() % 70) - 35.0f;
+		
+		    // --- Dibuja un prisma rectangular (cuboide) ---
+		    // Cara frontal
 		    glBegin(GL_QUADS);
-		        glTexCoord2f(0.0f, 1.0f); glVertex3f(x, 0.0f, z);
-		        glTexCoord2f(1.0f, 1.0f); glVertex3f(x + grosor_pared, 0.0f, z);
-		        glTexCoord2f(1.0f, 0.0f); glVertex3f(x + grosor_pared, altura_pared, z);
-		        glTexCoord2f(0.0f, 0.0f); glVertex3f(x, altura_pared, z);
+		        glTexCoord2f(0.0f, 0.0f); glVertex3f(x,          0.0f,      z);
+		        glTexCoord2f(1.0f, 0.0f); glVertex3f(x+lado,     0.0f,      z);
+		        glTexCoord2f(1.0f, 1.0f); glVertex3f(x+lado, altura,      z);
+		        glTexCoord2f(0.0f, 1.0f); glVertex3f(x,      altura,      z);
+		    glEnd();
+		    // Cara trasera
+		    glBegin(GL_QUADS);
+		        glTexCoord2f(0.0f, 0.0f); glVertex3f(x,          0.0f,      z+lado);
+		        glTexCoord2f(1.0f, 0.0f); glVertex3f(x+lado,     0.0f,      z+lado);
+		        glTexCoord2f(1.0f, 1.0f); glVertex3f(x+lado, altura,      z+lado);
+		        glTexCoord2f(0.0f, 1.0f); glVertex3f(x,      altura,      z+lado);
+		    glEnd();
+		    // Cara izquierda
+		    glBegin(GL_QUADS);
+		        glTexCoord2f(0.0f, 0.0f); glVertex3f(x, 0.0f, z);
+		        glTexCoord2f(1.0f, 0.0f); glVertex3f(x, 0.0f, z+lado);
+		        glTexCoord2f(1.0f, 1.0f); glVertex3f(x, altura, z+lado);
+		        glTexCoord2f(0.0f, 1.0f); glVertex3f(x, altura, z);
+		    glEnd();
+		    // Cara derecha
+		    glBegin(GL_QUADS);
+		        glTexCoord2f(0.0f, 0.0f); glVertex3f(x+lado, 0.0f, z);
+		        glTexCoord2f(1.0f, 0.0f); glVertex3f(x+lado, 0.0f, z+lado);
+		        glTexCoord2f(1.0f, 1.0f); glVertex3f(x+lado, altura, z+lado);
+		        glTexCoord2f(0.0f, 1.0f); glVertex3f(x+lado, altura, z);
+		    glEnd();
+		    // Cara superior
+		    glBegin(GL_QUADS);
+		        glTexCoord2f(0.0f, 0.0f); glVertex3f(x,      altura, z);
+		        glTexCoord2f(1.0f, 0.0f); glVertex3f(x+lado, altura, z);
+		        glTexCoord2f(1.0f, 1.0f); glVertex3f(x+lado, altura, z+lado);
+		        glTexCoord2f(0.0f, 1.0f); glVertex3f(x,      altura, z+lado);
+		    glEnd();
+		    // Cara inferior (opcional, normalmente no se ve)
+		    glBegin(GL_QUADS);
+		        glTexCoord2f(0.0f, 0.0f); glVertex3f(x,      0.0f, z);
+		        glTexCoord2f(1.0f, 0.0f); glVertex3f(x+lado, 0.0f, z);
+		        glTexCoord2f(1.0f, 1.0f); glVertex3f(x+lado, 0.0f, z+lado);
+		        glTexCoord2f(0.0f, 1.0f); glVertex3f(x,      0.0f, z+lado);
 		    glEnd();
 		}
+
+		glDisable(GL_TEXTURE_2D);
+		
+		
+		
+		
+		
+		
 		
 		// --- SOMBRA BÁSICA BAJO LAS PAREDES (oscurece el suelo junto a la base de las paredes) ---
 		glDisable(GL_TEXTURE_2D);
@@ -2009,18 +2333,13 @@ void dibujarEscena() {
         // Dibujar el minimapa
         
         
-    	dibujarMinimapa(grosor_pared, altura_pared); // Pasa los valores aquí
-
+		dibujarMinimapa(grosor_pared, altura_pared, texDoomguy);		
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_LIGHT0);          
     }
 
     glutSwapBuffers();
 }
-
-
-
-
 void inicializarRenderizado() {
 
     glEnable(GL_DEPTH_TEST);
@@ -2028,20 +2347,17 @@ void inicializarRenderizado() {
     glEnable(GL_NORMALIZE);
     glShadeModel(GL_FLAT);
 
-}
-void redimensionar(int w, int h) {
+}void redimensionar(int w, int h) {
     glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(45.0, (double)w / (double)h, 1.0, 200.0);
+    gluPerspective(45.0, (double)w / (double)h, 1.0, 1000.0);
     glMatrixMode(GL_MODELVIEW);
     ancho_pantalla = w;
     alto_pantalla = h;
     centro_X = ancho_pantalla / 2;
     centro_Y = alto_pantalla / 2;
 }
-
-
 
 void display(void) {
     if (modoVisual == 0) {  // Día
@@ -2082,14 +2398,22 @@ int main(int argc, char** argv) {
     texturaID_suelo = cargarTextura("neutral.tga");
     texturaHUD = cargarTextura("hud.tga");    
 	texturaID_cielo = cargarTextura("cielo.tga");
-    texturaID_techo = cargarTextura("techoInfierno.tga"); // Carga la textura
+	texturaID_fondo = cargarTextura("LADO1.tga");
+    texturaID_techo = cargarTextura("techoInfierno.tga"); 
+	texturaID_paredAlma = cargarTextura("alma.tga");
+	texDoomguy= cargarTextura("doo.png");
 
    // Calcula deltaTime como ya lo haces
 	cargarFramesPistola();
 	cargarFramesEscopeta();
 	cargarFramesRevolver();
    	cargarFramesCara();
-	cargarFramesEnemigo();
+   	
+   	
+	cargarFramesEnemigo0();
+	cargarFramesEnemigo1();
+	cargarFramesEnemigo2();
+
    
     glutPostRedisplay();
     glutDisplayFunc(dibujarEscena);
