@@ -85,7 +85,19 @@ GLuint texturaID_cielo;
 GLuint texturaID_fondo;
 GLuint texturaID_paredAlma;
 GLuint texDoomguy;
+GLuint texturaMuerteEnemigo0;
+GLuint texturaMuerteEnemigo1;
+GLuint texturaMuerteEnemigo2;
 GLuint texturaHUD = 0;
+
+struct Bala {
+    float x, y, z;        // Posición
+    float dx, dy, dz;     // Dirección normalizada
+    float velocidad;      // Velocidad de la bala
+    bool activa;          // ¿Está en vuelo?
+};
+const int MAX_BALAS = 32;
+Bala balas[MAX_BALAS];
 
 struct PosicionJugador {
     float x;
@@ -94,7 +106,7 @@ struct PosicionJugador {
 PosicionJugador jugador = {0.0f, 0.0f}; // Inicializa donde quieras que empiece el jugador
 
 // Estados posibles para el enemigo
-enum EstadoEnemigo { CAMINAR, ATACAR, MORIR, MUERTO };
+enum EstadoEnemigo { CAMINAR, ATACAR, MORIR, EN_SUELO, MUERTO };
 
 struct Enemigo {
     float x, y, z;
@@ -114,6 +126,25 @@ const int numEnemigos = 3;
 
 enum TipoArma { PISTOLA = 0, ESCOPETA = 1, REVOLVER = 2 };
 int arma_actual = PISTOLA;
+
+
+void disparar(float origen_x, float origen_z, float dir_x, float dir_z) {
+    for (int i = 0; i < MAX_BALAS; ++i) {
+        if (!balas[i].activa) {
+            balas[i].x = origen_x;
+            balas[i].y = 0.0f;
+            balas[i].z = origen_z;
+            float len = std::sqrt(dir_x*dir_x + dir_z*dir_z);
+            balas[i].dx = dir_x / len;
+            balas[i].dy = 0.0f;
+            balas[i].dz = dir_z / len;
+            balas[i].velocidad = 2.0f;
+            balas[i].activa = true;
+            printf("[debug] Se disparó una bala en (%f, %f) dirección (%f, %f)\n", origen_x, origen_z, dir_x, dir_z);
+            break;
+        }
+    }
+}
 
 
 GLuint cargarTextura(const char* nombreArchivo) {
@@ -246,9 +277,7 @@ void cargarFramesEnemigo1() {
     frames_enemigo1_attack.push_back(cargarTextura("mod2_12.png"));
     frames_enemigo1_attack.push_back(cargarTextura("mod2_13.png"));
     frames_enemigo1_attack.push_back(cargarTextura("mod2_14.png"));
-    frames_enemigo1_attack.push_back(cargarTextura("mod2_15.png"));
-    frames_enemigo1_attack.push_back(cargarTextura("mod2_16.png"));
-    frames_enemigo1_attack.push_back(cargarTextura("mod2_17.png"));
+
 
     // Animación de morir
     frames_enemigo1_die.push_back(cargarTextura("mod2_18.png"));
@@ -374,8 +403,17 @@ void cargarFramesCara() {
 
 // ACTUALIZAR ANIMACIONES 
 
-
-
+void aplicarDanioEnemigo(Enemigo& enemigo, int danio) {
+    // Solo recibe daño si está vivo (NO si está muriendo, ni muerto, ni en el suelo)
+    if (enemigo.estado != MORIR && enemigo.estado != EN_SUELO && enemigo.estado != MUERTO) {
+        enemigo.vida -= danio;
+        if (enemigo.vida <= 0) {
+            enemigo.vida = 0;
+            enemigo.estado = MORIR;
+            enemigo.tiempoAnimacion = 0.0f;
+        }
+    }
+}
 void actualizarAnimacionCara(float deltaTime) {
     cara_tiempo += deltaTime;
     if (cara_tiempo >= cara_duracion_frame) {
@@ -386,9 +424,67 @@ void actualizarAnimacionCara(float deltaTime) {
         }
     }
 }
+void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_z, float deltaTime) {
+    if (!enemigo.activo || enemigo.estado == MUERTO) return;
 
+    // Si la vida llegó a cero, entra a la animación de muerte si no está ya muriendo o muerto
+    if (enemigo.vida <= 0 && enemigo.estado != MORIR && enemigo.estado != EN_SUELO && enemigo.estado != MUERTO) {
+        enemigo.estado = MORIR;
+        enemigo.tiempoAnimacion = 0.0f;
+        printf("[debug] Enemigo entra a MORIR por vida <= 0\n");
+        return;
+    }
+
+    // Mientras está muriendo, espera a que acabe la animación de muerte
+    if (enemigo.estado == MORIR) {
+        enemigo.tiempoAnimacion += deltaTime;
+        // Duración de la animación de muerte
+        if (enemigo.tiempoAnimacion > 2.0f) {
+            enemigo.estado = EN_SUELO;
+            enemigo.tiempoAnimacion = 0.0f;
+            printf("[debug] Enemigo terminó animación MORIR y pasa a EN_SUELO\n");
+        }
+        return;
+    }
+
+    // Mientras está en el suelo, solo cuenta tiempo (opcional: pasar a MUERTO tras unos segundos)
+    if (enemigo.estado == EN_SUELO) {
+        enemigo.tiempoAnimacion += deltaTime;
+        // Si quieres que desaparezca tras 3 segundos en el suelo:
+        if (enemigo.tiempoAnimacion > 30.0f) {
+            enemigo.estado = MUERTO;
+            enemigo.activo = false;
+            printf("[debug] Enemigo pasa a MUERTO tras estar en el suelo\n");
+        }
+        // Si quieres que nunca desaparezca, comenta el bloque anterior.
+        return;
+    }
+
+    // Si está vivo, sigue la lógica normal de comportamiento
+    float dx = jugador_x - enemigo.x;
+    float dz = jugador_z - enemigo.z;
+    float distancia = sqrt(dx * dx + dz * dz);
+
+    if (distancia < 7.0f) {
+        if (enemigo.estado != ATACAR) printf("[debug] Enemigo pasa a ATACAR\n");
+        enemigo.estado = ATACAR;
+    } else {
+        if (enemigo.estado != CAMINAR) printf("[debug] Enemigo pasa a CAMINAR\n");
+        enemigo.estado = CAMINAR;
+    }
+}
 
 GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
+    // Forzar textura especial si está en el suelo
+    if (enemigo.estado == EN_SUELO) {
+        switch (enemigo.tipo) {
+            case 0: return texturaMuerteEnemigo0;
+            case 1: return texturaMuerteEnemigo1;
+            case 2: return texturaMuerteEnemigo2;
+            default: return 0;
+        }
+    }
+    // Lógica normal para otros estados
     switch (enemigo.tipo) {
         case 0:
             switch (enemigo.estado) {
@@ -417,42 +513,51 @@ GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
 }
 
 
+void actualizarBalasYColisiones(float deltaTime) {
+    for (int i = 0; i < MAX_BALAS; ++i) {
+        if (balas[i].activa) {
+            // Avanza la bala
+            balas[i].x += balas[i].dx * balas[i].velocidad * deltaTime;
+            balas[i].z += balas[i].dz * balas[i].velocidad * deltaTime;
 
-void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_z) {
-    // Si ya está muerto, no hace nada
-    if (!enemigo.activo || enemigo.estado == MUERTO) return;
-
-    // Si la vida es 0 o menos, cambia a MORIR si no lo está ya
-    if (enemigo.vida <= 0 && enemigo.estado != MORIR && enemigo.estado != MUERTO) {
-        enemigo.estado = MORIR;
-        enemigo.tiempoAnimacion = 0.0f;
-        return;
-    }
-
-    // Calcula distancia al jugador
-    float dx = jugador_x - enemigo.x;
-    float dz = jugador_z - enemigo.z;
-    float distancia = sqrt(dx * dx + dz * dz);
-
-    if (enemigo.estado == MORIR) return; // Está muriendo, no hace nada más
-
-    // Cambia de estado según la distancia
-    if (distancia < 5.0f) {
-        enemigo.estado = ATACAR;
-    } else {
-        enemigo.estado = CAMINAR;
+            // Colisión con enemigos
+            for (int j = 0; j < numEnemigos; ++j) {
+                if (
+                    enemigos[j].activo &&
+                    enemigos[j].estado != MORIR &&
+                    enemigos[j].estado != EN_SUELO &&
+                    enemigos[j].estado != MUERTO
+                ) {
+                    float dx = balas[i].x - enemigos[j].x;
+                    float dz = balas[i].z - enemigos[j].z;
+                    float distancia = sqrt(dx*dx + dz*dz);
+                    float radio = 2.5f * enemigos[j].escala;
+                    if (distancia < radio) {
+                        enemigos[j].vida -= 50;
+                        printf("[debug] Bala impacta enemigo %d. Vida restante: %d\n", j, enemigos[j].vida);
+                        if (enemigos[j].vida <= 0) {
+                            enemigos[j].vida = 0;
+                            enemigos[j].estado = MORIR;
+                            enemigos[j].tiempoAnimacion = 0.0f;
+                        }
+                        balas[i].activa = false;
+                        break;
+                    }
+                }
+            }
+        }
     }
 }
 
-
 void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
+
     enemigo.tiempoAnimacion += deltaTime;
     int totalFrames = 1;
-    float frameDuration = 0.1f;
+    float frameDuration = 0.13f; // animación más lenta
 
     switch (enemigo.tipo) {
-        case 0: // Enemigo tipo 0
+        case 0:
             switch (enemigo.estado) {
                 case CAMINAR:
                     totalFrames = frames_enemigo0_walk.size();
@@ -467,15 +572,18 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
                     enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration);
                     if (enemigo.frameActual >= totalFrames) {
                         enemigo.frameActual = totalFrames - 1;
-                        enemigo.estado = MUERTO;
-                        enemigo.activo = false;
+                        enemigo.estado = EN_SUELO;
+                        enemigo.tiempoAnimacion = 0.0f;
                     }
+                    break;
+                case EN_SUELO:
+                    // Nada, solo espera
                     break;
                 default:
                     enemigo.frameActual = 0;
             }
             break;
-        case 1: // Enemigo tipo 1
+        case 1:
             switch (enemigo.estado) {
                 case CAMINAR:
                     totalFrames = frames_enemigo1_walk.size();
@@ -490,15 +598,18 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
                     enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration);
                     if (enemigo.frameActual >= totalFrames) {
                         enemigo.frameActual = totalFrames - 1;
-                        enemigo.estado = MUERTO;
-                        enemigo.activo = false;
+                        enemigo.estado = EN_SUELO;
+                        enemigo.tiempoAnimacion = 0.0f;
                     }
+                    break;
+                case EN_SUELO:
+                    // Nada
                     break;
                 default:
                     enemigo.frameActual = 0;
             }
             break;
-        case 2: // Enemigo tipo 2
+        case 2:
             switch (enemigo.estado) {
                 case CAMINAR:
                     totalFrames = frames_enemigo2_walk.size();
@@ -513,20 +624,40 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
                     enemigo.frameActual = int(enemigo.tiempoAnimacion / frameDuration);
                     if (enemigo.frameActual >= totalFrames) {
                         enemigo.frameActual = totalFrames - 1;
-                        enemigo.estado = MUERTO;
-                        enemigo.activo = false;
+                        enemigo.estado = EN_SUELO;
+                        enemigo.tiempoAnimacion = 0.0f;
                     }
+                    break;
+                case EN_SUELO:
+                    // Nada
                     break;
                 default:
                     enemigo.frameActual = 0;
             }
             break;
-        default: // Por si llega un tipo desconocido
+        default:
             enemigo.frameActual = 0;
     }
 }
 
 
+// --- Actualiza todos los enemigos ---
+
+void actualizarEnemigos(float deltaTime) {
+    for (int i = 0; i < numEnemigos; ++i) {
+        actualizarEstadoEnemigo(enemigos[i], posicion_camara_x, posicion_camara_z, deltaTime);
+        // Puedes agregar aquí lógica de movimiento según el estado
+        if (enemigos[i].estado == CAMINAR) {
+            float dx = posicion_camara_x - enemigos[i].x;
+            float dz = posicion_camara_z - enemigos[i].z;
+            float dist = sqrt(dx*dx + dz*dz);
+            printf("[debug] Enemigo #%d: distancia al jugador = %f (radio = %f)\n", i, dist, 2.5f * enemigos[i].escala);
+                enemigos[i].x += (dx/dist) * 0.8f * deltaTime;
+                enemigos[i].z += (dz/dist) * 0.8f * deltaTime;
+                printf("[debug] Enemigo %d se mueve a (%f, %f)\n", i, enemigos[i].x, enemigos[i].z);
+            }
+        }
+    }
 
 
 void dibujarTextoSombreado(float x, float y, const char* texto, void* fuente, float r, float g, float b) {
@@ -597,9 +728,6 @@ void dibujarArmaAnimada() {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
-
-
-
 void actualizarAnimacionArma(float deltaTime) {
     if (esta_animando_disparo) {
         arma_tiempo += deltaTime;
@@ -651,23 +779,25 @@ void manejarClickMouse(int button, int state, int x, int y) {
         return;
     }
 
-    // Solo actúa si el botón izquierdo es presionado, el juego está iniciado y no está terminado
-    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN && juego_iniciado && !juego_terminado) {
-        // --- Animación del disparo, igual que en 'f' ---
-        esta_animando_disparo = true;
-        arma_frame_actual = 0;
-        arma_tiempo = 0.0f;
-
-        // --- Reproduce el sonido correspondiente al arma actual ---
-        if (arma_actual == PISTOLA) {
-            reproducirSonidoArma("pistola.mp3");
-        } else if (arma_actual == ESCOPETA) {
-            reproducirSonidoArma("escopeta.mp3");
-        } else if (arma_actual == REVOLVER) {
-            reproducirSonidoArma("revolver.mp3");
-        }
-
-    }
+	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN && juego_iniciado && !juego_terminado) {
+	    esta_animando_disparo = true;
+	    arma_frame_actual = 0;
+	    arma_tiempo = 0.0f;
+	
+	    // Calcula la dirección del disparo (hacia donde mira el jugador)
+	    float rad = angulo_yaw * M_PI / 180.0f;
+	    float dx = cos(rad), dz = sin(rad);
+	    disparar(jugador.x, jugador.z, dx, dz);
+	
+	    // Reproduce el sonido correspondiente al arma actual
+	    if (arma_actual == PISTOLA) {
+	        reproducirSonidoArma("pistola.mp3");
+	    } else if (arma_actual == ESCOPETA) {
+	        reproducirSonidoArma("escopeta.mp3");
+	    } else if (arma_actual == REVOLVER) {
+	        reproducirSonidoArma("revolver.mp3");
+	    }
+	}
 }
 void dibujarHUD(int municion) {
 
@@ -813,8 +943,6 @@ void movimientoMouse(int x, int y) {
 
     glutPostRedisplay();
 }
-
-
 void dibujarLineaPared(float fijo, bool horizontal) {
     for (float var = -0.0f; var <= 50.0f; var += 2.0f) {
         glPushMatrix();
@@ -845,8 +973,6 @@ void dibujarTexto(float x, float y, const char* texto) {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
-
-
 void dibujarMinimapa(float grosor_pared, float altura_pared, GLuint texDoomguy) {
     // --- 2D Setup ---
     glMatrixMode(GL_PROJECTION);
@@ -1743,10 +1869,6 @@ void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float juga
 
 
 
-
-
-
-
 // Variable global para el último tiempo de actualización
 float ultimoTiempo = 0.0f;
 
@@ -1754,7 +1876,7 @@ float ultimoTiempo = 0.0f;
 // Variables de estado de teclas para movimiento fluido
 bool tecla_w = false, tecla_a = false, tecla_s = false, tecla_d = false;
 
-// Llama a este en glutKeyboardFunc
+// Llama a esta función en glutKeyboardFunc
 void manejarTeclas(unsigned char key, int x, int y) 
 {
     // Mostrar/Ocultar menú con 'M' o 'm'
@@ -1835,16 +1957,29 @@ void manejarTeclas(unsigned char key, int x, int y)
                 velocidad_salto = VELOCIDAD_SALTO_INICIAL;
             }
             break;
-        case 'f': // Disparo
+        case 'f': { // Disparo
             esta_animando_disparo = true;
             arma_frame_actual = 0; // reinicia animación
             arma_tiempo = 0.0f;
-            {
-               
+
+            // Calcula la dirección del disparo (hacia donde mira el jugador)
+            float rad = angulo_yaw * M_PI / 180.0f;
+            float dx = cos(rad), dz = sin(rad);
+            disparar(jugador.x, jugador.z, dx, dz); // Esta es la lógica de disparo
+
+            // (Opcional) Sonido
+            if (arma_actual == PISTOLA) {
+                reproducirSonidoArma("pistola.mp3");
+            } else if (arma_actual == ESCOPETA) {
+                reproducirSonidoArma("escopeta.mp3");
+            } else if (arma_actual == REVOLVER) {
+                reproducirSonidoArma("revolver.mp3");
             }
-            break;
+            break; // Importante para terminar el case 'f'
+        }
         case 27: // ESC
             exit(0);
+            break;
     }
 }
 
@@ -1953,17 +2088,18 @@ void actualizar(int value) {
     actualizarAnimacionArma(deltaTime);
     actualizarAnimacionCara(deltaTime);
     actualizarMovimientoJugador(deltaTime);
+    actualizarBalasYColisiones(deltaTime); // Aquí SÍ debes llamar la lógica de las balas
+
 
     // --- Actualización de enemigos ---
     float velocidad = 2.0f; // o el valor que prefieras
 
 	for (int i = 0; i < numEnemigos; ++i) {
-	    actualizarEstadoEnemigo(enemigos[i], jugador.x, jugador.z);
+		actualizarEstadoEnemigo(enemigos[i], jugador.x, jugador.z, deltaTime);
 	    if (enemigos[i].estado == CAMINAR) {
 	        moverEnemigoHaciaJugador(enemigos[i], jugador.x, jugador.z, velocidad, deltaTime);
 	    }
 	    actualizarAnimacionEnemigo(enemigos[i], deltaTime);
-	    printf("Jugador en (%.2f, %.2f)\n", jugador.x, jugador.z);
 	}
 	
 	
@@ -2311,7 +2447,7 @@ void dibujarEscena() {
 
        	
 		for (int i = 0; i < numEnemigos; ++i) {
-		    printf("Dibujando enemigo %d en (%.2f, %.2f, %.2f)\n", i, enemigos[i].x, enemigos[i].y, enemigos[i].z);
+		   
 		    dibujarEnemigoBillboard(enemigos[i], jugador.x, jugador.z);
 		}
 		
@@ -2402,7 +2538,9 @@ int main(int argc, char** argv) {
     texturaID_techo = cargarTextura("techoInfierno.tga"); 
 	texturaID_paredAlma = cargarTextura("alma.tga");
 	texDoomguy= cargarTextura("doo.png");
-
+	texturaMuerteEnemigo0 = cargarTextura("mod1_14.png");
+	texturaMuerteEnemigo1 = cargarTextura("mod2_23.png");
+	texturaMuerteEnemigo2 = cargarTextura("mod3_15.png");
    // Calcula deltaTime como ya lo haces
 	cargarFramesPistola();
 	cargarFramesEscopeta();
