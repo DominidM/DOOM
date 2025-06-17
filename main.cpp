@@ -1,4 +1,5 @@
 #include <GL/glut.h>
+#include <GL/glu.h>
 #include <vector>
 #include <cmath>
 #include <math.h>
@@ -48,6 +49,9 @@ int municion = 50;
 int vidas = 3;
 bool juego_terminado = false;
 bool juego_iniciado = false; // Nuevo estado para la pantalla de inicio
+long last_damage_time_player = 0; // Tiempo del último daño recibido por el jugador
+const long PLAYER_DAMAGE_COOLDOWN_MS = 1000;
+
 
 //============MENU 1
 int modoVisual = 0;      // ELECCION DIA
@@ -89,6 +93,11 @@ GLuint texturaMuerteEnemigo0;
 GLuint texturaMuerteEnemigo1;
 GLuint texturaMuerteEnemigo2;
 GLuint texturaHUD = 0;
+GLuint texturaID_basurero;
+GLuint texturaID_barril;
+GLuint texturaID_metal;
+GLuint texturaID_encimera;
+GLuint texturaID_gameOver;
 
 struct Bala {
     float x, y, z;        // Posición
@@ -98,16 +107,13 @@ struct Bala {
 };
 const int MAX_BALAS = 32;
 Bala balas[MAX_BALAS];
-
 struct PosicionJugador {
     float x;
     float z;
 };
 PosicionJugador jugador = {0.0f, 0.0f}; // Inicializa donde quieras que empiece el jugador
-
 // Estados posibles para el enemigo
 enum EstadoEnemigo { CAMINAR, ATACAR, MORIR, EN_SUELO, MUERTO };
-
 struct Enemigo {
     float x, y, z;
     int vida;
@@ -117,17 +123,15 @@ struct Enemigo {
     bool activo;
     int tipo;
     float escala; // <-- nuevo campo para tamaño individual
+    
+    long tiempoUltimoAtaqueEnemigo; 
+    long frecuenciaAtaqueEnemigoMs;
 };
-
 // Array de enemigos y contador de enemigos activos:
 Enemigo enemigos[MAX_ENEMIGOS];
 const int numEnemigos = 3;
-
-
 enum TipoArma { PISTOLA = 0, ESCOPETA = 1, REVOLVER = 2 };
 int arma_actual = PISTOLA;
-
-
 void disparar(float origen_x, float origen_z, float dir_x, float dir_z) {
     for (int i = 0; i < MAX_BALAS; ++i) {
         if (!balas[i].activa) {
@@ -145,8 +149,6 @@ void disparar(float origen_x, float origen_z, float dir_x, float dir_z) {
         }
     }
 }
-
-
 GLuint cargarTextura(const char* nombreArchivo) {
     int width, height, channels;
     unsigned char* data = stbi_load(nombreArchivo, &width, &height, &channels, STBI_rgb_alpha);
@@ -163,11 +165,7 @@ GLuint cargarTextura(const char* nombreArchivo) {
     stbi_image_free(data);
     return textureID;
 }
-
-
-
 std::vector<Pared> paredes; // o Pared paredes[MAX_PAREDES];
-
 
 //VECTORERS PARA ARMAS
 std::vector<GLuint> frames_pistola;
@@ -193,9 +191,6 @@ std::vector<GLuint> frames_enemigo2_walk;
 std::vector<GLuint> frames_enemigo2_attack;
 std::vector<GLuint> frames_enemigo2_die;
 
-
-
-
 int cara_frame_actual = 0;
 float cara_tiempo = 0.0f;
 float cara_duracion_frame = 0.12f; // Velocidad de animación, ajusta a gusto
@@ -218,7 +213,183 @@ void detenerMusica() {
     mciSendString("stop miMusica", NULL, 0, NULL);
     mciSendString("close miMusica", NULL, 0, NULL);
 }
+//AÑADIMOS UN ASCENSOR
+struct Ascensor {
+    float x, y, z;          //ubi actual
+    float ancho, profundidad, altura; // Dimensiones del ascensor 
+    float y_inicial;        // Altura a la que desciende
+    float y_final;          // Altura a la que asciende
+    float velocidad;       
+    bool subiendo;          // true si esta subiendo, false si esta bajando
+    bool activo;            // true si esta en movimiento, false si esta quieto xd
+    bool jugador_en_ascensor; // true si el jugador está sobre el ascensor
+    
+    
+};
+Ascensor miAscensor;
 
+
+//AÑADIMOS EL ASCENSOR
+void dibujarAscensor(const Ascensor& ascensor) {
+    glPushMatrix();
+    glTranslatef(ascensor.x, ascensor.y, ascensor.z);
+
+    glColor3f(0.6f, 0.6f, 0.65f); // Color gris metálico
+    glDisable(GL_TEXTURE_2D); // Asegurarse de que no use la textura del basurero o anterior
+
+    GLfloat material_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+    GLfloat material_diffuse[] = { 0.6f, 0.6f, 0.65f, 1.0f };
+    GLfloat material_specular[] = { 0.9f, 0.9f, 0.9f, 1.0f };
+    GLfloat material_shininess = 50.0f;
+
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, material_ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, material_diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_specular);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, material_shininess);
+
+    // La plataforma es un cubo escalado
+    glScalef(ascensor.ancho, ascensor.altura, ascensor.profundidad);
+    glutSolidCube(1.0f); // Un cubo de tamaño 1x1x1
+
+    // glDisable(GL_LIGHTING); // Si vas a dibujar elementos no iluminados después
+    glPopMatrix();
+}
+void inicializarJuego() {
+
+    miAscensor.x = 0.0f; 
+    miAscensor.y = 0.5f; 
+    miAscensor.z = 1.0f; 
+    miAscensor.ancho = 5.0f;
+    miAscensor.profundidad = 5.0f;
+    miAscensor.altura = 0.1f;
+    miAscensor.y_inicial = 0.0f;   
+    miAscensor.y_final = 10.0f;    
+    miAscensor.velocidad = 1.5f;  
+    miAscensor.subiendo = true;    
+    miAscensor.activo = false;  
+    miAscensor.jugador_en_ascensor = false; 
+
+}
+
+//AÑADIMOS EL BASURERO 
+
+void dibujarBasurero(float x, float y, float z, float escala) {
+    glPushMatrix();
+    glTranslatef(x, y, z);
+    glScalef(escala, escala, escala);
+
+    glEnable(GL_NORMALIZE); 
+    GLUquadric* quad = gluNewQuadric();
+    gluQuadricNormals(quad, GLU_SMOOTH);
+    gluQuadricTexture(quad, GL_TRUE);   
+
+    glEnable(GL_TEXTURE_2D); // Habilita la textura
+    glBindTexture(GL_TEXTURE_2D, texturaID_basurero);
+
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    glTranslatef(0.0f, 0.5f, 0.0f);
+    glRotatef(-90.0f, 1.0f, 0.0f, 0.0f); // Rota el cilindro para que este parado
+
+    gluCylinder(quad, 0.5, 0.5, 1.0, 32, 32); // Cuerpo del basurero
+
+    glDisable(GL_TEXTURE_2D); // Deshabilita el texturizado después de usarlo
+
+    glTranslatef(0.0f, 0.0f, 1.0f); 
+
+    glColor3f(0.3f, 0.3f, 0.3f);
+    gluDisk(quad, 0.0, 0.5, 32, 32);
+
+    glColor3f(0.5f, 0.5f, 0.5f); 
+    glTranslatef(0.0f, 0.0f, 0.01f);
+    gluCylinder(quad, 0.52, 0.52, 0.05, 32, 32);
+
+    gluDeleteQuadric(quad);
+    glDisable(GL_NORMALIZE);
+
+    glPopMatrix();
+}
+
+void dibujarBarril(float x, float y, float z, float radio, float altura, GLuint texturaID) {
+    glPushMatrix();
+    glTranslatef(x, y, z); // Posiciona el barril
+
+    glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para que la textura se vea correctamente
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texturaID);
+
+    GLUquadric* quad = gluNewQuadric();
+    gluQuadricTexture(quad, GL_TRUE); // Habilita coordenadas de textura para el quadric
+
+    glRotatef(-90.0f, 1.0f, 0.0f, 0.0f); 
+    gluCylinder(quad, radio, radio, altura, 32, 32); 
+
+    gluDisk(quad, 0, radio, 32, 32); 
+    glPushMatrix();
+    glTranslatef(0.0f, 0.0f, altura); 
+    gluDisk(quad, 0, radio, 32, 32); 
+    glPopMatrix();
+
+
+    gluDeleteQuadric(quad); // Libera la memoria del quadric
+
+    glDisable(GL_TEXTURE_2D); // Deshabilita la textura
+    glPopMatrix();
+}
+void dibujarMesa(float x, float y, float z, float ancho, float profundidad, float altura, float grosor_pata, float altura_superficie) {
+    glPushMatrix();
+    glTranslatef(x, y, z); // Mueve la mesa a su posición central en el mundo
+
+
+    glColor3f(0.5f, 0.5f, 0.5f);
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texturaID_metal);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+
+    // Pata Delantera Izquierda
+    glPushMatrix();
+    glTranslatef(-ancho / 2 + grosor_pata / 2, altura / 2 - grosor_pata / 2 - (altura - altura_superficie) / 2, -profundidad / 2 + grosor_pata / 2);
+    glScalef(grosor_pata, altura - altura_superficie, grosor_pata); // Altura de la pata es la altura total menos la de la superficie
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Pata Delantera Derecha
+    glPushMatrix();
+    glTranslatef(ancho / 2 - grosor_pata / 2, altura / 2 - grosor_pata / 2 - (altura - altura_superficie) / 2, -profundidad / 2 + grosor_pata / 2);
+    glScalef(grosor_pata, altura - altura_superficie, grosor_pata);
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Pata Trasera Izquierda
+    glPushMatrix();
+    glTranslatef(-ancho / 2 + grosor_pata / 2, altura / 2 - grosor_pata / 2 - (altura - altura_superficie) / 2, profundidad / 2 - grosor_pata / 2);
+    glScalef(grosor_pata, altura - altura_superficie, grosor_pata);
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Pata Trasera Derecha
+    glPushMatrix();
+    glTranslatef(ancho / 2 - grosor_pata / 2, altura / 2 - grosor_pata / 2 - (altura - altura_superficie) / 2, profundidad / 2 - grosor_pata / 2);
+    glScalef(grosor_pata, altura - altura_superficie, grosor_pata);
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    glBindTexture(GL_TEXTURE_2D, texturaID_encimera);
+
+    glPushMatrix();
+    // La superficie está en la parte superior de la altura total de la mesa
+    glTranslatef(0.0f, altura / 2 - (altura_superficie / 2), 0.0f); // Posición Y para la encimera
+    glScalef(ancho, altura_superficie, profundidad);
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    glDisable(GL_TEXTURE_2D); 
+    glPopMatrix(); 
+}
 
 // FRAMES ENEMIGOS
 void cargarFramesEnemigo0() {
@@ -318,10 +489,6 @@ void cargarFramesEnemigo2() {
     frames_enemigo2_die.push_back(cargarTextura("mod3_12.png"));
     frames_enemigo2_die.push_back(cargarTextura("mod3_15.png"));
 }
-
-
-
-
 void cargarFramesPistola() {
     frames_pistola.push_back(cargarTextura("pistola_0.png"));
     frames_pistola.push_back(cargarTextura("pistola_1.png"));
@@ -399,10 +566,28 @@ void cargarFramesCara() {
     frames_cara.push_back(cargarTextura("doomguy_3.png"));
     frames_cara.push_back(cargarTextura("doomguy_3.png"));
 }
-
-
 // ACTUALIZAR ANIMACIONES 
+void recibirDano(int cantidadDano) {
+    if (juego_terminado) return; // No recibir daño si ya es Game Over
 
+    long current_time = glutGet(GLUT_ELAPSED_TIME); // Usar glutGet para el tiempo actual
+    if (current_time - last_damage_time_player < PLAYER_DAMAGE_COOLDOWN_MS) {
+        return; // Todavía en cooldown del jugador, no recibe daño
+    }
+
+    vidas -= cantidadDano;
+    std::cout << "DEBUG: Vida restante del jugador: " << vidas << std::endl;
+
+    if (vidas <= 0) {
+        vidas = 0;
+        juego_terminado = true; 
+        juego_iniciado = false; 
+        std::cout << "DEBUG: ¡GAME OVER!" << std::endl;
+        glutSetCursor(GLUT_CURSOR_INHERIT); 
+    }
+
+    last_damage_time_player = current_time; 
+}
 void aplicarDanioEnemigo(Enemigo& enemigo, int danio) {
     // Solo recibe daño si está vivo (NO si está muriendo, ni muerto, ni en el suelo)
     if (enemigo.estado != MORIR && enemigo.estado != EN_SUELO && enemigo.estado != MUERTO) {
@@ -424,56 +609,67 @@ void actualizarAnimacionCara(float deltaTime) {
         }
     }
 }
-void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_z, float deltaTime) {
+void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x,float jugador_y, float jugador_z, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
 
-    // Si la vida llegó a cero, entra a la animación de muerte si no está ya muriendo o muerto
     if (enemigo.vida <= 0 && enemigo.estado != MORIR && enemigo.estado != EN_SUELO && enemigo.estado != MUERTO) {
         enemigo.estado = MORIR;
         enemigo.tiempoAnimacion = 0.0f;
         printf("[debug] Enemigo entra a MORIR por vida <= 0\n");
         return;
     }
-
-    // Mientras está muriendo, espera a que acabe la animación de muerte
-    if (enemigo.estado == MORIR) {
+	 if (enemigo.estado == MORIR || enemigo.estado == EN_SUELO) {
         enemigo.tiempoAnimacion += deltaTime;
-        // Duración de la animación de muerte
-        if (enemigo.tiempoAnimacion > 2.0f) {
-            enemigo.estado = EN_SUELO;
-            enemigo.tiempoAnimacion = 0.0f;
-            printf("[debug] Enemigo terminó animación MORIR y pasa a EN_SUELO\n");
-        }
         return;
     }
-
-    // Mientras está en el suelo, solo cuenta tiempo (opcional: pasar a MUERTO tras unos segundos)
-    if (enemigo.estado == EN_SUELO) {
-        enemigo.tiempoAnimacion += deltaTime;
-        // Si quieres que desaparezca tras 3 segundos en el suelo:
-        if (enemigo.tiempoAnimacion > 30.0f) {
-            enemigo.estado = MUERTO;
-            enemigo.activo = false;
-            printf("[debug] Enemigo pasa a MUERTO tras estar en el suelo\n");
-        }
-        // Si quieres que nunca desaparezca, comenta el bloque anterior.
-        return;
-    }
-
-    // Si está vivo, sigue la lógica normal de comportamiento
     float dx = jugador_x - enemigo.x;
     float dz = jugador_z - enemigo.z;
-    float distancia = sqrt(dx * dx + dz * dz);
+    float distancia_xz = sqrt(dx * dx + dz * dz);
 
-    if (distancia < 7.0f) {
-        if (enemigo.estado != ATACAR) printf("[debug] Enemigo pasa a ATACAR\n");
+    float dy = (jugador_y - 1.0f) - enemigo.y;
+    float distancia_total_sq = dx * dx + dy * dy + dz * dz;
+
+    const float RADIO_COLISION_ENEMIGO_REAL = 0.8f * enemigo.escala;
+    const float UMBRAL_COLISION_SQ = (RADIO_JUGADOR + RADIO_COLISION_ENEMIGO_REAL) * (RADIO_JUGADOR + RADIO_COLISION_ENEMIGO_REAL);
+
+    const float RANGO_PERSECUCION = 7.0f;
+
+    if (distancia_total_sq < UMBRAL_COLISION_SQ) {
+        if (enemigo.estado != ATACAR) {
+            printf("[debug] Enemigo %p pasa a ATACAR (cuerpo a cuerpo) por contacto\n", (void*)&enemigo);
+            enemigo.tiempoAnimacion = 0.0f;
+            enemigo.frameActual = 0;
+            enemigo.tiempoUltimoAtaqueEnemigo = glutGet(GLUT_ELAPSED_TIME); 
+        }
         enemigo.estado = ATACAR;
+
+        if (glutGet(GLUT_ELAPSED_TIME) - enemigo.tiempoUltimoAtaqueEnemigo >= enemigo.frecuenciaAtaqueEnemigoMs) { 
+            recibirDano(1);
+            enemigo.tiempoUltimoAtaqueEnemigo = glutGet(GLUT_ELAPSED_TIME); 
+            printf("[debug] Enemigo %p ataca al jugador! Vida: %d\n", (void*)&enemigo, vidas);
+        }
+        return;
+    } else if (distancia_xz < RANGO_PERSECUCION) {
+        if (enemigo.estado != ATACAR) {
+            printf("[debug] Enemigo %p pasa a ATACAR (persiguiendo)\n", (void*)&enemigo);
+            enemigo.tiempoAnimacion = 0.0f;
+            enemigo.frameActual = 0;
+        }
+        enemigo.estado = ATACAR;
+
+        float velocidadEnemigo = 2.0f;
+        enemigo.x += (dx / distancia_xz) * velocidadEnemigo * deltaTime;
+        enemigo.z += (dz / distancia_xz) * velocidadEnemigo * deltaTime;
+
     } else {
-        if (enemigo.estado != CAMINAR) printf("[debug] Enemigo pasa a CAMINAR\n");
+        if (enemigo.estado != CAMINAR) {
+            printf("[debug] Enemigo %p pasa a CAMINAR (patrullando o inactivo)\n", (void*)&enemigo);
+            enemigo.tiempoAnimacion = 0.0f;
+            enemigo.frameActual = 0;
+        }
         enemigo.estado = CAMINAR;
     }
 }
-
 GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
     // Forzar textura especial si está en el suelo
     if (enemigo.estado == EN_SUELO) {
@@ -511,8 +707,6 @@ GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
             return 0;
     }
 }
-
-
 void actualizarBalasYColisiones(float deltaTime) {
     for (int i = 0; i < MAX_BALAS; ++i) {
         if (balas[i].activa) {
@@ -548,7 +742,6 @@ void actualizarBalasYColisiones(float deltaTime) {
         }
     }
 }
-
 void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
 
@@ -639,14 +832,10 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
             enemigo.frameActual = 0;
     }
 }
-
-
 // --- Actualiza todos los enemigos ---
-
 void actualizarEnemigos(float deltaTime) {
     for (int i = 0; i < numEnemigos; ++i) {
-        actualizarEstadoEnemigo(enemigos[i], posicion_camara_x, posicion_camara_z, deltaTime);
-        // Puedes agregar aquí lógica de movimiento según el estado
+		actualizarEstadoEnemigo(enemigos[i], posicion_camara_x, posicion_camara_y, posicion_camara_z, deltaTime);
         if (enemigos[i].estado == CAMINAR) {
             float dx = posicion_camara_x - enemigos[i].x;
             float dz = posicion_camara_z - enemigos[i].z;
@@ -658,8 +847,6 @@ void actualizarEnemigos(float deltaTime) {
             }
         }
     }
-
-
 void dibujarTextoSombreado(float x, float y, const char* texto, void* fuente, float r, float g, float b) {
     // Sombra
     glColor3f(0,0,0); 
@@ -1081,26 +1268,31 @@ void dibujarMinimapa(float grosor_pared, float altura_pared, GLuint texDoomguy) 
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
-
 //===========ILUMINACION
 void configurarIluminacion() {
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
 
-    GLfloat luz_dia[]     = { 1.0f, 1.0f, 1.0f, 1.0f };  // Blanca
-    GLfloat luz_noche[]   = { 0.1f, 0.1f, 0.3f, 1.0f };  // Azul tenue
+    GLfloat luz_dia[]   = { 1.0f, 1.0f, 1.0f, 1.0f };  // Blanca
+    GLfloat luz_noche[] = { 0.1f, 0.1f, 0.3f, 1.0f };  // Azul tenue
+    GLfloat ambient_dia[] = { 0.4f, 0.4f, 0.4f, 1.0f }; 
+    GLfloat ambient_noche[] = { 0.05f, 0.05f, 0.1f, 1.0f }; 
 
-    GLfloat pos_luz[]     = { 0.0f, 10.0f, 10.0f, 1.0f };
+    GLfloat pos_luz[]   = { 0.0f, 10.0f, 10.0f, 1.0f };
 
-    if (modoVisual == 0) {
+    if (modoVisual == 0) { 
+        glLightfv(GL_LIGHT0, GL_AMBIENT, ambient_dia);  
         glLightfv(GL_LIGHT0, GL_DIFFUSE, luz_dia);
         glLightfv(GL_LIGHT0, GL_SPECULAR, luz_dia);
     } else {
+        glLightfv(GL_LIGHT0, GL_AMBIENT, ambient_noche);
         glLightfv(GL_LIGHT0, GL_DIFFUSE, luz_noche);
         glLightfv(GL_LIGHT0, GL_SPECULAR, luz_noche);
     }
 
     glLightfv(GL_LIGHT0, GL_POSITION, pos_luz);
+    glEnable(GL_COLOR_MATERIAL); 
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE); 
 }
 void dibujarTexto(float x, float y, const std::string& texto) {
     glRasterPos2f(x, y);
@@ -1218,7 +1410,6 @@ void crearMenu_2(void) {
     // Asociar menú al botón derecho del mouse
     glutAttachMenu(GLUT_RIGHT_BUTTON);
 }
-
 // DIBUJO 2D 
 void BordeDOOM(){
 	glColor3f(0.0f,0.0f,0.0f);
@@ -1793,8 +1984,6 @@ void MotosierraBorde(){
 		glVertex2f(-0.37f,-0.36f);
 	glEnd();
 }
-
-
 void moverEnemigoHaciaJugador(Enemigo& enemigo, float jugador_x, float jugador_z, float velocidad, float deltaTime) {
     float dx = jugador_x - enemigo.x;
     float dz = jugador_z - enemigo.z;
@@ -1804,7 +1993,6 @@ void moverEnemigoHaciaJugador(Enemigo& enemigo, float jugador_x, float jugador_z
         enemigo.z += (dz / distancia) * velocidad * deltaTime;
     }
 }
-
 void inicializarEnemigos() {
     enemigos[0].x = -10; enemigos[0].y = 0; enemigos[0].z = 10;
     enemigos[0].vida = 100; enemigos[0].estado = CAMINAR; enemigos[0].activo = true;
@@ -1828,7 +2016,6 @@ void inicializarEnemigos() {
     enemigos[2].escala = 1.7f; 
     
 }
-
 void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float jugador_z) {
     if (!enemigo.activo) return;
     float dx = jugador_x - enemigo.x;
@@ -1864,21 +2051,12 @@ void dibujarEnemigoBillboard(const Enemigo& enemigo, float jugador_x, float juga
         glDisable(GL_TEXTURE_2D);
     glPopMatrix();
 }
-
-
-
-
-
 // Variable global para el último tiempo de actualización
 float ultimoTiempo = 0.0f;
-
-
 // Variables de estado de teclas para movimiento fluido
 bool tecla_w = false, tecla_a = false, tecla_s = false, tecla_d = false;
-
 // Llama a esta función en glutKeyboardFunc
-void manejarTeclas(unsigned char key, int x, int y) 
-{
+void manejarTeclas(unsigned char key, int x, int y) {
     // Mostrar/Ocultar menú con 'M' o 'm'
     if (key == 'm' || key == 'M') {
         mostrarMenu = !mostrarMenu;
@@ -1982,10 +2160,8 @@ void manejarTeclas(unsigned char key, int x, int y)
             break;
     }
 }
-
 // Para movimiento fluido: llama a esto en glutKeyboardUpFunc
-void manejarTeclasUp(unsigned char key, int x, int y)
-{
+void manejarTeclasUp(unsigned char key, int x, int y){
     switch (key) {
         case 'w': tecla_w = false; break;
         case 'a': tecla_a = false; break;
@@ -1993,13 +2169,8 @@ void manejarTeclasUp(unsigned char key, int x, int y)
         case 'd': tecla_d = false; break;
     }
 }
-
-
-
-
 // Llama a esto en tu ciclo de actualización (timer o idle)
-void actualizarMovimientoJugador(float deltaTime)
-{
+void actualizarMovimientoJugador(float deltaTime){
     float velocidad_movimiento = 10.0f * deltaTime; 
     float radianes_yaw = angulo_yaw * M_PI / 180.0f;
     float frente_x = cos(radianes_yaw);
@@ -2056,65 +2227,180 @@ void actualizarMovimientoJugador(float deltaTime)
 	}
 	}
 
-
-
 void actualizar(int value) {
-    // Calcula deltaTime seguro
-    float tiempoActual = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // segundos
-    float deltaTime = tiempoActual - ultimoTiempo;
-    ultimoTiempo = tiempoActual;
-
-    if (juego_terminado) {
-        glutPostRedisplay();
-        glutTimerFunc(20, actualizar, 0); // Sigue actualizando para HUD o animaciones
-        return;
-    }
-
-
-
-    // Lógica de salto del jugador
-    if (esta_saltando) {
-        altura_salto += velocidad_salto;
-        velocidad_salto -= GRAVEDAD;
-        if (altura_salto <= 0.0f) {
-            altura_salto = 0.0f;
-            esta_saltando = false;
-        }
-    }
-
-
-
-    // Animación de arma y DOOMGUY (cara)
-    actualizarAnimacionArma(deltaTime);
-    actualizarAnimacionCara(deltaTime);
-    actualizarMovimientoJugador(deltaTime);
-    actualizarBalasYColisiones(deltaTime); // Aquí SÍ debes llamar la lógica de las balas
-
-
-    // --- Actualización de enemigos ---
-    float velocidad = 2.0f; // o el valor que prefieras
-
-	for (int i = 0; i < numEnemigos; ++i) {
-		actualizarEstadoEnemigo(enemigos[i], jugador.x, jugador.z, deltaTime);
-	    if (enemigos[i].estado == CAMINAR) {
-	        moverEnemigoHaciaJugador(enemigos[i], jugador.x, jugador.z, velocidad, deltaTime);
+		
+	    // Calcula deltaTime seguro
+	    float tiempoActual = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // segundos
+	    float deltaTime = tiempoActual - ultimoTiempo;
+	    ultimoTiempo = tiempoActual;
+	
+	    if (juego_terminado) {
+	        glutPostRedisplay();
+	        glutTimerFunc(20, actualizar, 0); // Sigue actualizando para HUD o animaciones
+	        return;
 	    }
-	    actualizarAnimacionEnemigo(enemigos[i], deltaTime);
+		if (juego_iniciado) {
+		        bool jugador_sobre_ascensor_actual = false; // Bandera local para el frame actual
+		        
+			if (posicion_camara_x >= (miAscensor.x - miAscensor.ancho / 2.0f) &&
+		            posicion_camara_x <= (miAscensor.x + miAscensor.ancho / 2.0f) &&
+		            posicion_camara_z >= (miAscensor.z - miAscensor.profundidad / 2.0f) &&
+		            posicion_camara_z <= (miAscensor.z + miAscensor.profundidad / 2.0f))
+		        {
+		        	float pies_jugador_y = posicion_camara_y - 0.8f;
+
+	            if (pies_jugador_y <= (miAscensor.y + miAscensor.altura + 0.05f) && 
+	                pies_jugador_y >= (miAscensor.y + miAscensor.altura - 0.1f))  
+	            {
+	                jugador_sobre_ascensor_actual = true;
+	
+	                // Si el jugador NO está saltando, forzar su altura a la del ascensor
+	                if (!esta_saltando) {
+	                    posicion_camara_y = miAscensor.y + miAscensor.altura + 0.8f; 
+	                    altura_salto = 0.0f; // Reinicia la "velocidad" de salto si ya está pegado
+	                }
+	                
+	                // Activar el ascensor si el jugador lo pisa y no está activo
+	                if (!miAscensor.activo) {
+	                    miAscensor.activo = true;
+	                    miAscensor.subiendo = true;
+	                }
+	            }
+	        }
+	        miAscensor.jugador_en_ascensor = jugador_sobre_ascensor_actual;
+	        float old_ascensor_y = miAscensor.y; 
+	        if (miAscensor.activo) {
+	            if (miAscensor.subiendo) {
+	                miAscensor.y += miAscensor.velocidad * deltaTime;
+	                if (miAscensor.y >= miAscensor.y_final) {
+	                    miAscensor.y = miAscensor.y_final;
+	                    miAscensor.subiendo = false;
+	                }
+	            } else { // Bajando
+	                miAscensor.y -= miAscensor.velocidad * deltaTime;
+	                if (miAscensor.y <= miAscensor.y_inicial) {
+	                    miAscensor.y = miAscensor.y_inicial;
+	                    miAscensor.subiendo = true; 
+	                    miAscensor.activo = false; 
+	                }
+	            }
+	        }
+	        
+	        float delta_y_ascensor = miAscensor.y - old_ascensor_y; 
+	        
+	        if (miAscensor.jugador_en_ascensor) {
+	            posicion_camara_y += delta_y_ascensor; 
+	        }
+	         
+	    	// Lógica de salto del jugador
+		    if (esta_saltando) {
+		        altura_salto += velocidad_salto;
+		        velocidad_salto -= GRAVEDAD;
+		        if (altura_salto <= 0.0f) {
+		            altura_salto = 0.0f;
+		            esta_saltando = false;
+		        }
+		        float y_pies_actual = posicion_camara_y - 0.8f;
+	            float y_superficie_objetivo;
+	
+	            if (miAscensor.jugador_en_ascensor) {
+	                // Si está en el ascensor, el objetivo es la parte superior del ascensor
+	                y_superficie_objetivo = miAscensor.y + miAscensor.altura;
+	            } else {
+	                // Si no está en el ascensor, el objetivo es el suelo (Y=0)
+	                y_superficie_objetivo = 0.0f; 
+	            }
+	            if (y_pies_actual < y_superficie_objetivo) {
+                posicion_camara_y = y_superficie_objetivo + 0.8f; // Ajusta la posición para que quede sobre la superficie
+                altura_salto = 0.0f; // Detiene el movimiento vertical
+                esta_saltando = false; // El salto ha terminado
+            }
+		        } else { // El jugador NO está saltando
+		            // Si NO está en el ascensor Y sus pies no están en el suelo, aplica gravedad normal
+		            if (!miAscensor.jugador_en_ascensor && (posicion_camara_y - 0.8f) > 0.0f) { 
+		                 posicion_camara_y -= GRAVEDAD * deltaTime;
+		                 if ((posicion_camara_y - 0.8f) < 0.0f) {
+		                     posicion_camara_y = 0.8f; // Toca el suelo
+		            }
+		        }
+		    }
+		}
+	
+	    // Animación de arma y DOOMGUY (cara)
+	    actualizarAnimacionArma(deltaTime);
+	    actualizarAnimacionCara(deltaTime);
+	    actualizarMovimientoJugador(deltaTime);
+	    actualizarBalasYColisiones(deltaTime); 
+	
+	
+	    float velocidad = 2.0f; 
+	
+		for (int i = 0; i < numEnemigos; ++i) {
+				actualizarEstadoEnemigo(enemigos[i], posicion_camara_x, posicion_camara_y, posicion_camara_z, deltaTime);		    if (enemigos[i].estado == CAMINAR) {
+		        moverEnemigoHaciaJugador(enemigos[i], jugador.x, jugador.z, velocidad, deltaTime);
+		    }
+		    actualizarAnimacionEnemigo(enemigos[i], deltaTime);
+		}
+		
+		
+	    glutPostRedisplay();
+	    glutTimerFunc(20, actualizar, 0);
 	}
-	
-	
-    glutPostRedisplay();
-    glutTimerFunc(20, actualizar, 0);
-}
-
-
 
 void dibujarEscena() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
     configurarIluminacion();
+	
+if(juego_terminado){
+        // --- PANTALLA DE GAME OVER CON IMAGEN ---
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_LIGHTING);
+        // NO deshabilites GL_TEXTURE_2D aquí, la necesitaremos para la imagen
 
-    if (!juego_iniciado) {
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        glLoadIdentity();
+        gluOrtho2D(0.0, ancho_pantalla, 0.0, alto_pantalla); // Modo 2D para la pantalla completa
+
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        glLoadIdentity();
+
+        // --- Dibuja la imagen de Game Over como fondo ---
+        glEnable(GL_TEXTURE_2D); // Asegúrate de que las texturas estén habilitadas
+        glColor3f(1.0f, 1.0f, 1.0f); // Color blanco para que la textura se vea con sus colores originales
+        glBindTexture(GL_TEXTURE_2D, texturaID_gameOver); // Enlaza tu textura de Game Over
+
+        glBegin(GL_QUADS);
+            glTexCoord2f(0.0f, 0.0f); glVertex2f(0.0f, 0.0f);
+            glTexCoord2f(1.0f, 0.0f); glVertex2f(ancho_pantalla, 0.0f);
+            glTexCoord2f(1.0f, 1.0f); glVertex2f(ancho_pantalla, alto_pantalla);
+            glTexCoord2f(0.0f, 1.0f); glVertex2f(0.0f, alto_pantalla);
+        glEnd();
+
+        glDisable(GL_TEXTURE_2D); // Deshabilita las texturas si no las usarás para el texto
+
+        glColor3f(0.8f, 1.6f, 0.4f);
+		const char* texto_instruccion = "DALE CLICK PARA REINICIAR";
+		int ancho_texto_instr = 0;
+		for (const char* c = texto_instruccion; *c; ++c)
+		    ancho_texto_instr += glutBitmapWidth(GLUT_BITMAP_HELVETICA_18, *c); // Fuente grande
+		float pos_x_instr = ancho_pantalla / 2 - ancho_texto_instr / 2;
+		float pos_y_instr = 30;
+		glRasterPos2f(pos_x_instr, pos_y_instr);
+		for (const char* c = texto_instruccion; *c; ++c)
+		    glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+		    	    
+        glPopMatrix(); // Pop GL_MODELVIEW de Game Over
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix(); // Pop GL_PROJECTION de Game Over
+
+        glEnable(GL_DEPTH_TEST); 
+        glEnable(GL_LIGHTING);  
+        glEnable(GL_TEXTURE_2D);
+
+    }else if (!juego_iniciado) {
         // --- PANTALLA DE INICIO ---
         glDisable(GL_DEPTH_TEST);
 
@@ -2137,12 +2423,12 @@ void dibujarEscena() {
         glEnd();
         // Texto instrucción
         glColor3f(0.8f, 1.6f, 0.4f);
-		const char* texto_instruccion = "DALE CLIC PARA JUGAR";
+		const char* texto_instruccion = "DALE CLICK PARA JUGAR";
 		int ancho_texto_instr = 0;
 		for (const char* c = texto_instruccion; *c; ++c)
 		    ancho_texto_instr += glutBitmapWidth(GLUT_BITMAP_HELVETICA_18, *c); // Fuente grande
 		float pos_x_instr = ancho_pantalla / 2 - ancho_texto_instr / 2;
-		float pos_y_instr = 30;  // ? Casi en el borde inferior
+		float pos_y_instr = 30;  
 		glRasterPos2f(pos_x_instr, pos_y_instr);
 		for (const char* c = texto_instruccion; *c; ++c)
 		    glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
@@ -2181,7 +2467,7 @@ void dibujarEscena() {
 
         BordeD_RED();
         BordeM();
-        BordeDOOM();         // ? ahora sí se verá
+        BordeDOOM();       	
         BordeO_RED();
         BordeOO_RED();
         BordeM_RED();
@@ -2189,8 +2475,9 @@ void dibujarEscena() {
 
         glPopMatrix(); // restaurar modelo
         glMatrixMode(GL_PROJECTION);
-        glPopMatrix(); // restaurar proyección
-        glMatrixMode(GL_MODELVIEW);
+        glPopMatrix(); // Restaura la matriz MODELVIEW de las letras
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix();
     }else {
         // --- ESCENA DEL JUEGO: LABERINTO DOOM ---
         glEnable(GL_DEPTH_TEST); // Volver a habilitar la prueba de profundidad para la escena 3D
@@ -2204,12 +2491,28 @@ void dibujarEscena() {
         glLoadIdentity();
 
         // --- POSICIÓN DE LA CÁMARA ---
-        gluLookAt(posicion_camara_x, posicion_camara_y + altura_salto + 2.0f, posicion_camara_z, 
-                  posicion_camara_x + direccion_camara_x, posicion_camara_y + altura_salto + 1.0f + direccion_camara_y, posicion_camara_z + direccion_camara_z,
-                  0.0f, 1.0f, 0.0f);
-                  
-                  
-                  
+        gluLookAt(posicion_camara_x, posicion_camara_y + altura_salto + 2.0f, posicion_camara_z,
+          posicion_camara_x + direccion_camara_x, posicion_camara_y + altura_salto + 1.0f + direccion_camara_y, posicion_camara_z + direccion_camara_z,
+          0.0f, 1.0f, 0.0f);
+
+        // --- MÁS BASUREROS ---
+        dibujarBasurero(3.0f, 0.4f, 11.0f, 1.2f); // sobre una mesa_2
+        dibujarBasurero(-6.0f, 0.4f, 17.0f, 1.2f); // sobre una mesa 
+        dibujarBasurero(20.0f, -0.3f, 25.0f, 1.2f); //sobre una mesa 3
+        dibujarBasurero(-15.0f, -0.3f, -20.0f, 1.2f); 
+
+        dibujarBarril(5.0f, 1.0f, 11.0f, 0.8f, 1.5f, texturaID_barril);// sobre una mesa_2
+        dibujarBarril(-7.5f, 1.0f, 17.0f, 0.7f, 1.3f, texturaID_barril);// sobre una mesa 
+        dibujarBarril(18.0f, 1.0f, -30.0f, 0.9f, 1.7f, texturaID_barril);//sobre una mesa 3
+        dibujarBarril(-25.0f, 1.0f, 5.0f, 0.8f, 1.5f, texturaID_barril);
+        
+        dibujarMesa(-7.0f, 0.0f, 17.0f, 4.0f, 2.0f, 2.0f, 0.3f, 0.15f); // Una mesa 
+        dibujarMesa(4.0f, 0.0f, 11.0f, 4.0f, 2.0f, 2.0f, 0.3f, 0.15f); // Una mesa_2
+		dibujarMesa(4.0f, 0.0f, 11.0f, 4.0f, 2.0f, 2.0f, 0.3f, 0.15f);//mesa_3
+        
+        //dibujar ascensor 
+        dibujarAscensor(miAscensor);
+      
                   
         // --- DIBUJAR EL SUELO ---
         glColor3f(1.0f, 1.0f, 1.0f); // Establecer color blanco para la textura
@@ -2350,14 +2653,6 @@ void dibujarEscena() {
 
 		    glPopMatrix();
 		}
-		
-		
-		
-		
-		
-		
-		
-		
 			// --- PILARES INTERIORES (columnas gruesas cuboides) ---
 		glEnable(GL_TEXTURE_2D);
 		GLuint texturaID_pilar = cargarTextura("alma.tga"); // Usa la misma textura o una diferente
@@ -2541,6 +2836,12 @@ int main(int argc, char** argv) {
 	texturaMuerteEnemigo0 = cargarTextura("mod1_14.png");
 	texturaMuerteEnemigo1 = cargarTextura("mod2_23.png");
 	texturaMuerteEnemigo2 = cargarTextura("mod3_15.png");
+	texturaID_basurero = cargarTextura("basurero.png");
+	texturaID_barril = cargarTextura("barril_explosivo.png");
+	texturaID_metal  = cargarTextura("metal.png");
+	texturaID_encimera = cargarTextura("laboratorio_superficie.png"); // O una nueva textura
+	texturaID_gameOver = cargarTextura("game_over.png");	
+
    // Calcula deltaTime como ya lo haces
 	cargarFramesPistola();
 	cargarFramesEscopeta();
