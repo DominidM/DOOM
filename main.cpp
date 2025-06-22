@@ -127,6 +127,7 @@ struct Enemigo {
     long tiempoUltimoAtaqueEnemigo; 
     long frecuenciaAtaqueEnemigoMs;
 };
+
 // Array de enemigos y contador de enemigos activos:
 Enemigo enemigos[MAX_ENEMIGOS];
 const int numEnemigos = 3;
@@ -254,6 +255,7 @@ void dibujarAscensor(const Ascensor& ascensor) {
     // glDisable(GL_LIGHTING); // Si vas a dibujar elementos no iluminados después
     glPopMatrix();
 }
+
 void inicializarJuego() {
 
     miAscensor.x = 0.0f; 
@@ -459,6 +461,7 @@ void cargarFramesEnemigo1() {
     frames_enemigo1_die.push_back(cargarTextura("mod2_23.png"));
 }
 void cargarFramesEnemigo2() {
+	
     // Animación de caminar
     frames_enemigo2_walk.push_back(cargarTextura("mod3_0.png"));
     frames_enemigo2_walk.push_back(cargarTextura("mod3_1.png"));
@@ -742,6 +745,7 @@ void actualizarBalasYColisiones(float deltaTime) {
         }
     }
 }
+
 void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
 
