@@ -10,7 +10,6 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <mmsystem.h>
-#define MAX_ENEMIGOS 20 
 #pragma comment(lib, "winmm.lib")
 #else
 #include <sys/time.h>
@@ -111,6 +110,7 @@ struct PosicionJugador {
     float x;
     float z;
 };
+const int MAX_ENEMIGOS = 100;
 PosicionJugador jugador = {0.0f, 0.0f}; // Inicializa donde quieras que empiece el jugador
 // Estados posibles para el enemigo
 enum EstadoEnemigo { CAMINAR, ATACAR, MORIR, EN_SUELO, MUERTO };
@@ -612,19 +612,20 @@ void actualizarAnimacionCara(float deltaTime) {
         }
     }
 }
-void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x,float jugador_y, float jugador_z, float deltaTime) {
+void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_y, float jugador_z, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
 
     if (enemigo.vida <= 0 && enemigo.estado != MORIR && enemigo.estado != EN_SUELO && enemigo.estado != MUERTO) {
         enemigo.estado = MORIR;
         enemigo.tiempoAnimacion = 0.0f;
-        printf("[debug] Enemigo entra a MORIR por vida <= 0\n");
+        printf("[debug] Enemigo tipo:%d entra a MORIR por vida <= 0\n", enemigo.tipo);
         return;
     }
-	 if (enemigo.estado == MORIR || enemigo.estado == EN_SUELO) {
+    if (enemigo.estado == MORIR || enemigo.estado == EN_SUELO) {
         enemigo.tiempoAnimacion += deltaTime;
         return;
     }
+
     float dx = jugador_x - enemigo.x;
     float dz = jugador_z - enemigo.z;
     float distancia_xz = sqrt(dx * dx + dz * dz);
@@ -635,44 +636,48 @@ void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x,float jugador_y, 
     const float RADIO_COLISION_ENEMIGO_REAL = 0.8f * enemigo.escala;
     const float UMBRAL_COLISION_SQ = (RADIO_JUGADOR + RADIO_COLISION_ENEMIGO_REAL) * (RADIO_JUGADOR + RADIO_COLISION_ENEMIGO_REAL);
 
-    const float RANGO_PERSECUCION = 7.0f;
+    // Puedes individualizar el rango/velocidad por tipo (opcional)
+    float RANGO_PERSECUCION = 7.0f;
+    float velocidadEnemigo = 2.0f;
 
     if (distancia_total_sq < UMBRAL_COLISION_SQ) {
         if (enemigo.estado != ATACAR) {
-            printf("[debug] Enemigo %p pasa a ATACAR (cuerpo a cuerpo) por contacto\n", (void*)&enemigo);
+            printf("[debug] Enemigo tipo:%d %p pasa a ATACAR (cuerpo a cuerpo)\n", enemigo.tipo, (void*)&enemigo);
             enemigo.tiempoAnimacion = 0.0f;
             enemigo.frameActual = 0;
-            enemigo.tiempoUltimoAtaqueEnemigo = glutGet(GLUT_ELAPSED_TIME); 
+            enemigo.tiempoUltimoAtaqueEnemigo = glutGet(GLUT_ELAPSED_TIME);
         }
         enemigo.estado = ATACAR;
 
-        if (glutGet(GLUT_ELAPSED_TIME) - enemigo.tiempoUltimoAtaqueEnemigo >= enemigo.frecuenciaAtaqueEnemigoMs) { 
+        if (glutGet(GLUT_ELAPSED_TIME) - enemigo.tiempoUltimoAtaqueEnemigo >= enemigo.frecuenciaAtaqueEnemigoMs) {
             recibirDano(1);
-            enemigo.tiempoUltimoAtaqueEnemigo = glutGet(GLUT_ELAPSED_TIME); 
-            printf("[debug] Enemigo %p ataca al jugador! Vida: %d\n", (void*)&enemigo, vidas);
+            enemigo.tiempoUltimoAtaqueEnemigo = glutGet(GLUT_ELAPSED_TIME);
+            printf("[debug] Enemigo tipo:%d %p ataca al jugador! Vida: %d\n", enemigo.tipo, (void*)&enemigo, vidas);
         }
         return;
     } else if (distancia_xz < RANGO_PERSECUCION) {
         if (enemigo.estado != ATACAR) {
-            printf("[debug] Enemigo %p pasa a ATACAR (persiguiendo)\n", (void*)&enemigo);
+            printf("[debug] Enemigo tipo:%d %p pasa a ATACAR (persiguiendo)\n", enemigo.tipo, (void*)&enemigo);
             enemigo.tiempoAnimacion = 0.0f;
             enemigo.frameActual = 0;
         }
         enemigo.estado = ATACAR;
 
-        float velocidadEnemigo = 2.0f;
         enemigo.x += (dx / distancia_xz) * velocidadEnemigo * deltaTime;
         enemigo.z += (dz / distancia_xz) * velocidadEnemigo * deltaTime;
-
     } else {
         if (enemigo.estado != CAMINAR) {
-            printf("[debug] Enemigo %p pasa a CAMINAR (patrullando o inactivo)\n", (void*)&enemigo);
+            printf("[debug] Enemigo tipo:%d %p pasa a CAMINAR (patrullando o inactivo)\n", enemigo.tipo, (void*)&enemigo);
             enemigo.tiempoAnimacion = 0.0f;
             enemigo.frameActual = 0;
         }
         enemigo.estado = CAMINAR;
     }
+
 }
+
+
+
 GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
     // Forzar textura especial si está en el suelo
     if (enemigo.estado == EN_SUELO) {
@@ -687,29 +692,89 @@ GLuint obtenerTexturaEnemigo(const Enemigo& enemigo) {
     switch (enemigo.tipo) {
         case 0:
             switch (enemigo.estado) {
-                case CAMINAR: return frames_enemigo0_walk[enemigo.frameActual];
-                case ATACAR:  return frames_enemigo0_attack[enemigo.frameActual];
-                case MORIR:   return frames_enemigo0_die[enemigo.frameActual];
-                default:      return 0;
+                case CAMINAR:
+                    if (!frames_enemigo0_walk.empty() && enemigo.frameActual < frames_enemigo0_walk.size())
+                        return frames_enemigo0_walk[enemigo.frameActual];
+                    else if (!frames_enemigo0_walk.empty())
+                        return frames_enemigo0_walk[0];
+                    else
+                        return 0;
+                case ATACAR:
+                    if (!frames_enemigo0_attack.empty() && enemigo.frameActual < frames_enemigo0_attack.size())
+                        return frames_enemigo0_attack[enemigo.frameActual];
+                    else if (!frames_enemigo0_attack.empty())
+                        return frames_enemigo0_attack[0];
+                    else
+                        return 0;
+                case MORIR:
+                    if (!frames_enemigo0_die.empty() && enemigo.frameActual < frames_enemigo0_die.size())
+                        return frames_enemigo0_die[enemigo.frameActual];
+                    else if (!frames_enemigo0_die.empty())
+                        return frames_enemigo0_die[0];
+                    else
+                        return 0;
+                default: return 0;
             }
         case 1:
             switch (enemigo.estado) {
-                case CAMINAR: return frames_enemigo1_walk[enemigo.frameActual];
-                case ATACAR:  return frames_enemigo1_attack[enemigo.frameActual];
-                case MORIR:   return frames_enemigo1_die[enemigo.frameActual];
-                default:      return 0;
+                case CAMINAR:
+                    if (!frames_enemigo1_walk.empty() && enemigo.frameActual < frames_enemigo1_walk.size())
+                        return frames_enemigo1_walk[enemigo.frameActual];
+                    else if (!frames_enemigo1_walk.empty())
+                        return frames_enemigo1_walk[0];
+                    else
+                        return 0;
+                case ATACAR:
+                    if (!frames_enemigo1_attack.empty() && enemigo.frameActual < frames_enemigo1_attack.size())
+                        return frames_enemigo1_attack[enemigo.frameActual];
+                    else if (!frames_enemigo1_attack.empty())
+                        return frames_enemigo1_attack[0];
+                    else
+                        return 0;
+                case MORIR:
+                    if (!frames_enemigo1_die.empty() && enemigo.frameActual < frames_enemigo1_die.size())
+                        return frames_enemigo1_die[enemigo.frameActual];
+                    else if (!frames_enemigo1_die.empty())
+                        return frames_enemigo1_die[0];
+                    else
+                        return 0;
+                default: return 0;
             }
         case 2:
             switch (enemigo.estado) {
-                case CAMINAR: return frames_enemigo2_walk[enemigo.frameActual];
-                case ATACAR:  return frames_enemigo2_attack[enemigo.frameActual];
-                case MORIR:   return frames_enemigo2_die[enemigo.frameActual];
-                default:      return 0;
+                case CAMINAR:
+                    if (!frames_enemigo2_walk.empty() && enemigo.frameActual < frames_enemigo2_walk.size())
+                        return frames_enemigo2_walk[enemigo.frameActual];
+                    else if (!frames_enemigo2_walk.empty())
+                        return frames_enemigo2_walk[0];
+                    else
+                        return 0;
+                case ATACAR:
+                    if (!frames_enemigo2_attack.empty() && enemigo.frameActual < frames_enemigo2_attack.size())
+                        return frames_enemigo2_attack[enemigo.frameActual];
+                    else if (!frames_enemigo2_attack.empty())
+                        return frames_enemigo2_attack[0];
+                    else
+                        return 0;
+                case MORIR:
+                    if (!frames_enemigo2_die.empty() && enemigo.frameActual < frames_enemigo2_die.size())
+                        return frames_enemigo2_die[enemigo.frameActual];
+                    else if (!frames_enemigo2_die.empty())
+                        return frames_enemigo2_die[0];
+                    else
+                        return 0;
+                default: return 0;
             }
         default:
             return 0;
     }
 }
+
+
+
+
+
+
 void actualizarBalasYColisiones(float deltaTime) {
     for (int i = 0; i < MAX_BALAS; ++i) {
         if (balas[i].activa) {
@@ -746,6 +811,52 @@ void actualizarBalasYColisiones(float deltaTime) {
     }
 }
 
+bool posicionValida(float x, float z, float jugador_x, float jugador_z, float minDist) {
+    float dx = x - jugador_x;
+    float dz = z - jugador_z;
+    return (dx*dx + dz*dz) > (minDist*minDist);
+}
+
+// Función para regenerar un enemigo en una posición aleatoria válida
+void regenerarEnemigo(Enemigo& enemigo, float jugador_x, float jugador_z) {
+    float x, z;
+    int intentos = 0;
+    // Evita aparecer sobre el jugador y fuera del rango del mapa
+    do {
+        x = ((rand() % 80) - 40); // Cambia 80 y 40 según tu mapa si necesitas
+        z = ((rand() % 80) - 40);
+        intentos++;
+        // Si después de muchos intentos no encuentra, sale del bucle (prevención)
+        if (intentos > 100) break;
+    } while ((x-jugador_x)*(x-jugador_x) + (z-jugador_z)*(z-jugador_z) < 9.0f);
+
+    enemigo.x = x;
+    enemigo.z = z;
+    enemigo.vida = 100;
+    enemigo.estado = CAMINAR;
+    enemigo.tiempoAnimacion = 0.0f;
+    enemigo.activo = true;
+    enemigo.tipo = rand() % 3; // Solo valores 0, 1 o 2
+    enemigo.escala = 1.0f + ((rand() % 21) / 10.0f); // Entre 1.0 y 3.0
+    enemigo.frameActual = 0;
+    enemigo.tiempoUltimoAtaqueEnemigo = glutGet(GLUT_ELAPSED_TIME);
+    enemigo.frecuenciaAtaqueEnemigoMs = 1000;
+
+    // Debug para verificar que tipo y estado siempre son válidos
+    printf("[debug] Nuevo enemigo tipo: %d estado: %d en (%.1f, %.1f)\n", enemigo.tipo, enemigo.estado, enemigo.x, enemigo.z);
+}
+
+
+// Busca un slot libre en el array de enemigos (no activo o muerto)
+int buscarSlotLibre() {
+    for (int i = 0; i < MAX_ENEMIGOS; i++) {
+        if (!enemigos[i].activo || enemigos[i].estado == MUERTO) {
+            return i;
+        }
+    }
+    return -1; // no hay slot libre
+}
+
 void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
     if (!enemigo.activo || enemigo.estado == MUERTO) return;
 
@@ -773,9 +884,16 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
                         enemigo.tiempoAnimacion = 0.0f;
                     }
                     break;
-                case EN_SUELO:
-                    // Nada, solo espera
-                    break;
+               case EN_SUELO:
+				    enemigo.activo = false; // Libera el slot actual
+				    for (int rep = 0; rep < 3; rep++) {   // Cambia aquí el 3 para la cantidad deseada
+				        int slot = buscarSlotLibre();
+				        if (slot != -1) {
+				            regenerarEnemigo(enemigos[slot], jugador.x, jugador.z);
+				        }
+				    }
+				    enemigo.estado = MUERTO; // Marca este como completamente fuera de juego
+				    break;
                 default:
                     enemigo.frameActual = 0;
             }
@@ -799,9 +917,16 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
                         enemigo.tiempoAnimacion = 0.0f;
                     }
                     break;
-                case EN_SUELO:
-                    // Nada
-                    break;
+	                case EN_SUELO:
+				    enemigo.activo = false; // Libera el slot actual
+				    for (int rep = 0; rep < 3; rep++) {   // Cambia aquí el 3 para la cantidad deseada
+				        int slot = buscarSlotLibre();
+				        if (slot != -1) {
+				            regenerarEnemigo(enemigos[slot], jugador.x, jugador.z);
+				        }
+				    }
+				    enemigo.estado = MUERTO; // Marca este como completamente fuera de juego
+				    break;
                 default:
                     enemigo.frameActual = 0;
             }
@@ -826,8 +951,15 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
                     }
                     break;
                 case EN_SUELO:
-                    // Nada
-                    break;
+				    enemigo.activo = false; // Libera el slot actual
+				    for (int rep = 0; rep < 3; rep++) {   // Cambia aquí el 3 para la cantidad deseada
+				        int slot = buscarSlotLibre();
+				        if (slot != -1) {
+				            regenerarEnemigo(enemigos[slot], jugador.x, jugador.z);
+				        }
+				    }
+				    enemigo.estado = MUERTO; // Marca este como completamente fuera de juego
+				    break;
                 default:
                     enemigo.frameActual = 0;
             }
@@ -836,6 +968,8 @@ void actualizarAnimacionEnemigo(Enemigo& enemigo, float deltaTime) {
             enemigo.frameActual = 0;
     }
 }
+
+
 // --- Actualiza todos los enemigos ---
 void actualizarEnemigos(float deltaTime) {
     for (int i = 0; i < numEnemigos; ++i) {
