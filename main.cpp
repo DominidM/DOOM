@@ -592,7 +592,6 @@ void recibirDano(int cantidadDano) {
     last_damage_time_player = current_time; 
 }
 void aplicarDanioEnemigo(Enemigo& enemigo, int danio) {
-    // Solo recibe daño si está vivo (NO si está muriendo, ni muerto, ni en el suelo)
     if (enemigo.estado != MORIR && enemigo.estado != EN_SUELO && enemigo.estado != MUERTO) {
         enemigo.vida -= danio;
         if (enemigo.vida <= 0) {
@@ -608,7 +607,7 @@ void actualizarAnimacionCara(float deltaTime) {
         cara_tiempo = 0.0f;
         cara_frame_actual++;
         if (cara_frame_actual >= frames_cara.size()) {
-            cara_frame_actual = 0; // Vuelve al primer frame
+            cara_frame_actual = 0;
         }
     }
 }
@@ -636,7 +635,6 @@ void actualizarEstadoEnemigo(Enemigo& enemigo, float jugador_x, float jugador_y,
     const float RADIO_COLISION_ENEMIGO_REAL = 0.8f * enemigo.escala;
     const float UMBRAL_COLISION_SQ = (RADIO_JUGADOR + RADIO_COLISION_ENEMIGO_REAL) * (RADIO_JUGADOR + RADIO_COLISION_ENEMIGO_REAL);
 
-    // Puedes individualizar el rango/velocidad por tipo (opcional)
     float RANGO_PERSECUCION = 7.0f;
     float velocidadEnemigo = 2.0f;
 
